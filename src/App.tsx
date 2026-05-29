@@ -77,65 +77,82 @@ function Nav() {
 
   const closeMenu = () => setMenuOpen(false);
 
+  const handleNavClick = (href: string) => (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    closeMenu();
+    const id = href.replace("#", "");
+    const target = document.getElementById(id);
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.history.pushState(null, "", href);
+    } else if (href === "#top") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.history.pushState(null, "", "#top");
+    }
+  };
+
   return (
-    <header className="fixed top-0 inset-x-0 z-50 backdrop-blur-md bg-background/90 border-b border-border/50">
-      <div className={`${containerClass} h-14 sm:h-16 flex items-center justify-between gap-3`}>
-        <a href="#top" className="flex items-center gap-2 min-w-0" onClick={closeMenu}>
-          <img src={logo} alt="Gaulaxmi" className="h-9 w-9 sm:h-10 sm:w-10 object-contain shrink-0" referrerPolicy="no-referrer" />
-          <div className="leading-tight min-w-0">
-            <div className="font-display text-base sm:text-lg text-primary font-bold truncate">Gaulaxmi</div>
-            <div className="text-[9px] sm:text-[10px] tracking-[0.2em] sm:tracking-[0.25em] text-muted-foreground uppercase truncate">Global Wellness</div>
-          </div>
-        </a>
-        <nav className="hidden lg:flex items-center gap-5 xl:gap-6">
-          {navLinks.map((l) => (
-            <a key={l.href} href={l.href} className="text-sm font-medium text-foreground/80 hover:text-accent transition-colors whitespace-nowrap">{l.label}</a>
-          ))}
-        </nav>
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <a href="#contact" className="hidden sm:inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium hover:bg-accent transition-all shadow-soft hover:scale-105">
-            Invest Now <ArrowRight className="w-4 h-4" />
+    <header className="fixed top-0 inset-x-0 z-[100]">
+      <div className="backdrop-blur-md bg-background/95 border-b border-border/50">
+        <div className={`${containerClass} h-14 sm:h-16 flex items-center justify-between gap-3`}>
+          <a href="#top" className="flex items-center gap-2 min-w-0 relative z-10" onClick={handleNavClick("#top")}>
+            <img src={logo} alt="Gaulaxmi" className="h-9 w-9 sm:h-10 sm:w-10 object-contain shrink-0" referrerPolicy="no-referrer" />
+            <div className="leading-tight min-w-0">
+              <div className="font-display text-base sm:text-lg text-primary font-bold truncate">Gaulaxmi</div>
+              <div className="text-[9px] sm:text-[10px] tracking-[0.2em] sm:tracking-[0.25em] text-muted-foreground uppercase truncate">Global Wellness</div>
+            </div>
           </a>
-          <button
-            type="button"
-            className="lg:hidden w-10 h-10 rounded-full border border-border flex items-center justify-center text-primary bg-card/80"
-            aria-label={menuOpen ? "Close menu" : "Open menu"}
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((o) => !o)}
-          >
-            {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
+          <nav className="hidden lg:flex items-center gap-5 xl:gap-6">
+            {navLinks.map((l) => (
+              <a key={l.href} href={l.href} className="text-sm font-medium text-foreground/80 hover:text-accent transition-colors whitespace-nowrap">{l.label}</a>
+            ))}
+          </nav>
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0 relative z-10">
+            <a href="#contact" className="hidden sm:inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium hover:bg-accent transition-all shadow-soft hover:scale-105">
+              Invest Now <ArrowRight className="w-4 h-4" />
+            </a>
+            <button
+              type="button"
+              className="lg:hidden w-10 h-10 rounded-full border border-border flex items-center justify-center text-primary bg-card/80 cursor-pointer"
+              aria-label={menuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((o) => !o)}
+            >
+              {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          </div>
         </div>
       </div>
       <AnimatePresence>
         {menuOpen && (
-          <motion.nav
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
+          <motion.div
+            key="mobile-menu"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.2 }}
-            className="lg:hidden border-t border-border/50 bg-background/95 overflow-hidden"
+            className="lg:hidden absolute left-0 right-0 top-full border-t border-border/50 bg-background shadow-lg"
           >
-            <div className={`${containerClass} py-4 flex flex-col gap-1`}>
+            <nav className={`${containerClass} py-4 flex flex-col gap-1 relative z-[100]`} aria-label="Mobile navigation">
               {navLinks.map((l) => (
                 <a
                   key={l.href}
                   href={l.href}
-                  onClick={closeMenu}
-                  className="py-3 px-3 rounded-xl text-sm font-medium text-foreground/90 hover:bg-secondary/60 transition-colors"
+                  onClick={handleNavClick(l.href)}
+                  className="relative z-10 block py-3 px-3 rounded-xl text-sm font-medium text-foreground/90 hover:bg-secondary/60 active:bg-secondary transition-colors cursor-pointer touch-manipulation"
                 >
                   {l.label}
                 </a>
               ))}
               <a
                 href="#contact"
-                onClick={closeMenu}
-                className="mt-2 inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-5 py-3 rounded-full text-sm font-semibold"
+                onClick={handleNavClick("#contact")}
+                className="relative z-10 mt-2 inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-5 py-3 rounded-full text-sm font-semibold cursor-pointer touch-manipulation"
               >
                 Invest Now <ArrowRight className="w-4 h-4" />
               </a>
-            </div>
-          </motion.nav>
+            </nav>
+          </motion.div>
         )}
       </AnimatePresence>
     </header>

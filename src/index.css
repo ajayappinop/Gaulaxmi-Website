@@ -94,7 +94,13 @@
 
 @layer base {
   * { border-color: var(--color-border); }
-  html { scroll-behavior: smooth; }
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 4.5rem;
+  }
+  @media (min-width: 640px) {
+    html { scroll-padding-top: 5rem; }
+  }
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
