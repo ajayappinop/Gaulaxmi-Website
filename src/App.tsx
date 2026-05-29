@@ -42,44 +42,102 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  FileDown
+  FileDown,
+  Menu,
+  X
 } from "lucide-react";
 
+const containerClass = "max-w-7xl mx-auto px-4 sm:px-6";
+const sectionY = "py-16 sm:py-20 lg:py-24";
 const sectionTagClass =
-  "inline-flex items-center rounded-full bg-[#f2e2c9] px-6 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#9a5f23] mb-6";
+  "inline-flex items-center rounded-full bg-[#f2e2c9] px-4 sm:px-6 py-2 text-[10px] sm:text-xs font-semibold uppercase tracking-[0.16em] sm:tracking-[0.24em] text-[#9a5f23] mb-4 sm:mb-6";
 const sectionHeadingClass =
-  "text-[36px] sm:text-[44px] leading-[1.1] sm:leading-[1.08] text-[rgba(44,26,14,1)] font-display font-semibold text-balance";
-const sectionParagraphClass = "mt-6 text-base md:text-lg text-[#8f5f3a] leading-relaxed";
+  "text-[1.75rem] sm:text-[2.5rem] md:text-[44px] leading-[1.15] sm:leading-[1.08] text-[rgba(44,26,14,1)] font-display font-semibold text-balance";
+const sectionParagraphClass = "mt-4 sm:mt-6 text-sm sm:text-base md:text-lg text-[#8f5f3a] leading-relaxed";
+
+const navLinks = [
+  { href: "#about", label: "About" },
+  { href: "#why", label: "Why Gaulaxmi" },
+  { href: "#income", label: "Income" },
+  { href: "#plans", label: "Plans" },
+  { href: "#calculator", label: "Calculator" },
+  { href: "#bonus", label: "Bonus" },
+  { href: "#join-form", label: "Contact" },
+];
 
 function Nav() {
-  const links = [
-    { href: "#about", label: "About" },
-    { href: "#why", label: "Why Gaulaxmi" },
-    { href: "#income", label: "Income" },
-    { href: "#plans", label: "Plans" },
-    { href: "#calculator", label: "Calculator" },
-    { href: "#bonus", label: "Bonus" },
-    { href: "#join-form", label: "Contact" },
-  ];
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    document.body.style.overflow = menuOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [menuOpen]);
+
+  const closeMenu = () => setMenuOpen(false);
+
   return (
-    <header className="fixed top-0 inset-x-0 z-50 backdrop-blur-md bg-background/70 border-b border-border/50">
-      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        <a href="#top" className="flex items-center gap-2">
-          <img src={logo} alt="Gaulaxmi" className="h-10 w-10 object-contain" referrerPolicy="no-referrer" />
-          <div className="leading-tight">
-            <div className="font-display text-lg text-primary font-bold">Gaulaxmi</div>
-            <div className="text-[10px] tracking-[0.25em] text-muted-foreground uppercase">Global Wellness</div>
+    <header className="fixed top-0 inset-x-0 z-50 backdrop-blur-md bg-background/90 border-b border-border/50">
+      <div className={`${containerClass} h-14 sm:h-16 flex items-center justify-between gap-3`}>
+        <a href="#top" className="flex items-center gap-2 min-w-0" onClick={closeMenu}>
+          <img src={logo} alt="Gaulaxmi" className="h-9 w-9 sm:h-10 sm:w-10 object-contain shrink-0" referrerPolicy="no-referrer" />
+          <div className="leading-tight min-w-0">
+            <div className="font-display text-base sm:text-lg text-primary font-bold truncate">Gaulaxmi</div>
+            <div className="text-[9px] sm:text-[10px] tracking-[0.2em] sm:tracking-[0.25em] text-muted-foreground uppercase truncate">Global Wellness</div>
           </div>
         </a>
-        <nav className="hidden lg:flex items-center gap-6">
-          {links.map((l) => (
-            <a key={l.href} href={l.href} className="text-sm font-medium text-foreground/80 hover:text-accent transition-colors">{l.label}</a>
+        <nav className="hidden lg:flex items-center gap-5 xl:gap-6">
+          {navLinks.map((l) => (
+            <a key={l.href} href={l.href} className="text-sm font-medium text-foreground/80 hover:text-accent transition-colors whitespace-nowrap">{l.label}</a>
           ))}
         </nav>
-        <a href="#contact" className="hidden sm:inline-flex items-center gap-2 bg-primary text-primary-foreground px-5 py-2.5 rounded-full text-sm font-medium hover:bg-accent transition-all shadow-soft hover:scale-105">
-          Invest Now <ArrowRight className="w-4 h-4" />
-        </a>
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <a href="#contact" className="hidden sm:inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium hover:bg-accent transition-all shadow-soft hover:scale-105">
+            Invest Now <ArrowRight className="w-4 h-4" />
+          </a>
+          <button
+            type="button"
+            className="lg:hidden w-10 h-10 rounded-full border border-border flex items-center justify-center text-primary bg-card/80"
+            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((o) => !o)}
+          >
+            {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
       </div>
+      <AnimatePresence>
+        {menuOpen && (
+          <motion.nav
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="lg:hidden border-t border-border/50 bg-background/95 overflow-hidden"
+          >
+            <div className={`${containerClass} py-4 flex flex-col gap-1`}>
+              {navLinks.map((l) => (
+                <a
+                  key={l.href}
+                  href={l.href}
+                  onClick={closeMenu}
+                  className="py-3 px-3 rounded-xl text-sm font-medium text-foreground/90 hover:bg-secondary/60 transition-colors"
+                >
+                  {l.label}
+                </a>
+              ))}
+              <a
+                href="#contact"
+                onClick={closeMenu}
+                className="mt-2 inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-5 py-3 rounded-full text-sm font-semibold"
+              >
+                Invest Now <ArrowRight className="w-4 h-4" />
+              </a>
+            </div>
+          </motion.nav>
+        )}
+      </AnimatePresence>
     </header>
   );
 }
@@ -110,11 +168,11 @@ function Hero() {
       </div>
 
       {/* Floating ornamental glows */}
-      <div className="absolute top-20 right-10 w-72 h-72 rounded-full bg-gradient-gold opacity-20 blur-3xl animate-float -z-10" />
-      <div className="absolute bottom-10 left-1/3 w-96 h-96 rounded-full bg-accent/15 blur-3xl animate-float delay-300 -z-10" />
+      <div className="absolute top-16 right-4 sm:top-20 sm:right-10 w-40 h-40 sm:w-72 sm:h-72 rounded-full bg-gradient-gold opacity-20 blur-3xl animate-float -z-10 pointer-events-none" />
+      <div className="absolute bottom-10 left-1/4 sm:left-1/3 w-56 h-56 sm:w-96 sm:h-96 rounded-full bg-accent/15 blur-3xl animate-float delay-300 -z-10 pointer-events-none" />
 
       {/* Main Container styled for full-screen hero text presentation with high-contrast placement */}
-      <div className="relative max-w-7xl mx-auto px-6 py-28 w-full mt-10">
+      <div className={`relative ${containerClass} py-20 sm:py-24 lg:py-28 w-full`}>
         <div className="max-w-3xl text-cream flex flex-col justify-center">
           
           {/* Elegant Welcome Badge */}
@@ -122,10 +180,10 @@ function Hero() {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
-            className="inline-flex self-start items-center gap-2 backdrop-blur-md bg-cream/10 border border-cream/20 rounded-full px-4 py-1.5 text-xs tracking-[0.2em] uppercase text-cream/90 mb-6 hover:bg-cream/20 transition-all cursor-default"
+            className="inline-flex self-start items-center gap-2 backdrop-blur-md bg-cream/10 border border-cream/20 rounded-full px-3 sm:px-4 py-1.5 text-[10px] sm:text-xs tracking-[0.12em] sm:tracking-[0.2em] uppercase text-cream/90 mb-5 sm:mb-6 hover:bg-cream/20 transition-all cursor-default max-w-full"
           >
-            <Sparkles className="w-3.5 h-3.5 text-gold animate-spin-slow" /> 
-            Multi-Income · Cow-Backed Wealth Management
+            <Sparkles className="w-3.5 h-3.5 text-gold animate-spin-slow shrink-0" /> 
+            <span className="leading-snug">Multi-Income · Cow-Backed Wealth</span>
           </motion.div>
 
           {/* Typography Heading with custom character stagger */}
@@ -133,7 +191,7 @@ function Hero() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.15 }}
-            className="font-display text-4xl sm:text-6xl lg:text-[72px] text-balance leading-[1.05] font-bold"
+            className="font-display text-[2rem] min-[480px]:text-4xl sm:text-5xl lg:text-[72px] text-balance leading-[1.08] sm:leading-[1.05] font-bold"
           >
             Where the{" "}
             <span className="text-gold bg-gradient-to-r from-gold via-cream to-gold bg-clip-text text-transparent animate-shimmer font-display font-bold">
@@ -150,7 +208,7 @@ function Hero() {
             className="mt-6 text-[17px] md:text-[19px] font-light text-cream/90 leading-relaxed text-balance"
           >
             Gaulaxmi seamlessly unites timeless rural heritage with digital multi-income engines. Earn a fully structured{" "}
-            <span className="text-gold font-semibold whitespace-nowrap bg-cream/10 px-2 py-0.5 rounded-md border border-gold/20">5% passive monthly ROI</span> safely for 60 months, backed by high-yield organic assets, token growth, and physical dairy allocations.
+            <span className="text-gold font-semibold bg-cream/10 px-2 py-0.5 rounded-md border border-gold/20 inline-block">5% passive monthly ROI</span> safely for 60 months, backed by high-yield organic assets, token growth, and physical dairy allocations.
           </motion.p>
 
           {/* Interactive Call to Action buttons */}
@@ -158,11 +216,11 @@ function Hero() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.5 }}
-            className="mt-8 flex flex-wrap gap-4 items-center"
+            className="mt-8 flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 items-stretch sm:items-center"
           >
             <a
               href="#plans"
-              className="group inline-flex items-center gap-2 bg-gradient-gold text-bark px-8 py-4 rounded-full font-semibold shadow-deep hover:scale-[1.04] transition-all duration-300 animate-pulse-glow"
+              className="group inline-flex items-center justify-center gap-2 bg-gradient-gold text-bark px-6 sm:px-8 py-3.5 sm:py-4 rounded-full font-semibold shadow-deep hover:scale-[1.04] transition-all duration-300 animate-pulse-glow text-sm sm:text-base"
             >
               Explore Active Tiers
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1.5 transition-transform" />
@@ -182,9 +240,9 @@ function Hero() {
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
               }}
-              className="inline-flex items-center gap-2 backdrop-blur-md bg-cream/10 border border-cream/35 text-cream px-8 py-4 rounded-full font-medium hover:bg-cream/20 transition-all duration-300"
+              className="inline-flex items-center justify-center gap-2 backdrop-blur-md bg-cream/10 border border-cream/35 text-cream px-6 sm:px-8 py-3.5 sm:py-4 rounded-full font-medium hover:bg-cream/20 transition-all duration-300 text-sm sm:text-base"
             >
-              <FileDown className="w-4 h-4 text-gold" />
+              <FileDown className="w-4 h-4 text-gold shrink-0" />
               Download Full PDF
             </a>
           </motion.div>
@@ -194,16 +252,16 @@ function Hero() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 1, delay: 0.65 }}
-            className="mt-14 grid grid-cols-3 gap-4 sm:gap-6 border-t border-cream/20 pt-8"
+            className="mt-10 sm:mt-14 grid grid-cols-1 min-[420px]:grid-cols-3 gap-5 sm:gap-6 border-t border-cream/20 pt-6 sm:pt-8"
           >
             {[
               { v: "5.0%", l: "Assured Monthly return", s: "Every 30 Days" },
               { v: "60 Mo.", l: "Sustained Wealth loop", s: "Complete Tenure" },
               { v: "100%", l: "Tangible Cow Backing", s: "Heritage Assets" },
             ].map((s, idx) => (
-              <div key={s.l} className="border-l border-gold/50 pl-4 hover:border-cream transition-colors">
-                <span className="block font-display text-2xl sm:text-4xl text-gold font-bold leading-none">{s.v}</span>
-                <span className="block text-[10px] uppercase tracking-[0.15em] text-cream/70 mt-1.5 font-semibold whitespace-nowrap">
+              <div key={s.l} className="border-l border-gold/50 pl-4 hover:border-cream transition-colors min-[420px]:border-l max-[419px]:border-l-0 max-[419px]:pl-0 max-[419px]:pt-4 max-[419px]:border-t max-[419px]:border-gold/30 first:max-[419px]:pt-0 first:max-[419px]:border-t-0">
+                <span className="block font-display text-3xl sm:text-4xl text-gold font-bold leading-none">{s.v}</span>
+                <span className="block text-[10px] sm:text-[11px] uppercase tracking-[0.12em] sm:tracking-[0.15em] text-cream/70 mt-1.5 font-semibold">
                   {s.l}
                 </span>
                 <span className="block text-[8px] tracking-[0.05em] text-cream/40 mt-0.5">
@@ -227,8 +285,8 @@ function Hero() {
 
 function About() {
   return (
-    <section id="about" className="py-24 bg-gradient-warm animate-fade-in">
-      <div className="max-w-6xl mx-auto px-6 text-center">
+    <section id="about" className={`${sectionY} bg-gradient-warm animate-fade-in`}>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 text-center">
         <div className={sectionTagClass}>Our Vision</div>
         <h2 className={`${sectionHeadingClass} max-w-3xl mx-auto`}>
           A 5-year plan that grows like a tree — rooted in soil, branching into markets.
@@ -238,7 +296,7 @@ function About() {
           Your capital fuels real cows, real land and real markets — while you earn passive,
           transparent returns every month.
         </p>
-        <div className="mt-12 grid md:grid-cols-3 gap-6">
+        <div className="mt-10 sm:mt-12 grid sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
           {[
             { icon: Shield, t: "Asset-Backed Security", d: "Your capital directly funds Gir cow health and dairy infrastructures, creating physical asset security." },
             { icon: Sparkles, t: "Passive Income", d: "Hands-free wealth growth — no complex knowledge of assets, trading, or maintenance required on your end." },
@@ -304,9 +362,9 @@ const streams = [
 
 function Income() {
   return (
-    <section id="income" className="py-24">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="flex items-end justify-between flex-wrap gap-6 mb-14">
+    <section id="income" className={sectionY}>
+      <div className={containerClass}>
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 sm:gap-6 mb-10 sm:mb-14">
           <div>
             <div className={sectionTagClass}>Four Income Streams</div>
             <h2 className={`${sectionHeadingClass} max-w-2xl`}>
@@ -328,7 +386,7 @@ function Income() {
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-bark/70 to-transparent" />
               </div>
-              <div className="p-8">
+              <div className="p-5 sm:p-8">
                 <div className="flex items-center justify-between mb-4">
                   <div className="w-12 h-12 rounded-xl bg-secondary flex items-center justify-center">
                     <s.icon className="w-6 h-6 text-primary" />
@@ -337,7 +395,7 @@ function Income() {
                 </div>
                 <h3 className="font-display text-2xl text-bark mb-3 font-bold">{s.title}</h3>
                 <p className="text-sm text-muted-foreground mb-5 leading-relaxed">{s.desc}</p>
-                <ul className="grid grid-cols-2 gap-2">
+                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {s.items.map((it) => (
                     <li key={it} className="flex items-center gap-2 text-sm text-foreground/80">
                       <Check className="w-4 h-4 text-accent" /> {it}
@@ -431,8 +489,8 @@ function CowProductsCarousel() {
   };
 
   return (
-    <section id="cow-products-carousel" className="py-24 bg-[#faf5ef] overflow-visible">
-      <div className="max-w-7xl mx-auto px-6">
+    <section id="cow-products-carousel" className={`${sectionY} bg-[#faf5ef] overflow-visible`}>
+      <div className={containerClass}>
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
           <div>
             <div className={sectionTagClass}>Premium Curations</div>
@@ -476,7 +534,7 @@ function CowProductsCarousel() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-100px" }}
               transition={{ duration: 0.5, delay: i * 0.1 }}
-              className="flex-shrink-0 w-[280px] sm:w-[350px] md:w-[380px] bg-card rounded-3xl border border-border/80 overflow-visible shadow-soft hover:shadow-deep transition-all duration-300 snap-start flex flex-col group"
+              className="flex-shrink-0 w-[min(85vw,280px)] sm:w-[350px] md:w-[380px] bg-card rounded-3xl border border-border/80 overflow-visible shadow-soft hover:shadow-deep transition-all duration-300 snap-start flex flex-col group"
             >
               <div className="relative h-64 overflow-hidden rounded-t-3xl bg-gradient-to-br from-[#efe5db] to-[#f4eee6]">
                 <img
@@ -528,8 +586,8 @@ const plans = [
 
 function Plans() {
   return (
-    <section id="plans" className="py-24 bg-gradient-warm">
-      <div className="max-w-7xl mx-auto px-6">
+    <section id="plans" className={`${sectionY} bg-gradient-warm`}>
+      <div className={containerClass}>
         <div className="text-center mb-12">
           <div className={sectionTagClass}>
             Investment Plans
@@ -542,10 +600,10 @@ function Plans() {
           </p>
         </div>
 
-        <div className="w-full mb-10 py-3 px-4 flex justify-center">
-          <div className="bg-card/60 border border-border rounded-full px-6 py-3.5 text-foreground/85 shadow-soft flex items-center justify-center gap-3 whitespace-nowrap max-w-full overflow-visible">
-            <div className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold flex-shrink-0 font-mono">i</div>
-            <p className="leading-none text-[11px] sm:text-xs md:text-sm flex-shrink-0">
+        <div className="w-full mb-8 sm:mb-10 py-2 sm:py-3 px-2 sm:px-4 flex justify-center">
+          <div className="bg-card/60 border border-border rounded-2xl sm:rounded-full px-4 sm:px-6 py-3 sm:py-3.5 text-foreground/85 shadow-soft flex items-start sm:items-center gap-3 max-w-full">
+            <div className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold flex-shrink-0 font-mono mt-0.5 sm:mt-0">i</div>
+            <p className="leading-relaxed sm:leading-snug text-[11px] sm:text-xs md:text-sm text-left sm:text-center">
               <span className="font-semibold text-primary">How it works:</span> Invest your chosen amount → Earn{" "}
               <span className="font-semibold text-accent">5% every month</span> for{" "}
               <span className="font-semibold">60 months</span> → Receive your principal back at maturity ={" "}
@@ -554,7 +612,7 @@ function Plans() {
           </div>
         </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-7">
+        <div className="grid grid-cols-1 min-[480px]:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-7">
           {plans.map((p) => (
             <div
               key={p.invest}
@@ -644,8 +702,8 @@ function ReturnCalculator() {
   const totalReturn = totalMonthlyPayout + amount;
 
   return (
-    <section id="calculator" className="py-24 bg-[#fffdf9]">
-      <div className="max-w-4xl mx-auto px-6">
+    <section id="calculator" className={`${sectionY} bg-[#fffdf9]`}>
+      <div className="max-w-4xl mx-auto px-4 sm:px-6">
         <div className="text-center mb-10">
           <div className={sectionTagClass}>Return Calculator</div>
           <h2 className={sectionHeadingClass}>
@@ -656,7 +714,7 @@ function ReturnCalculator() {
           </p>
         </div>
 
-        <div className="bg-card border border-border rounded-3xl p-6 md:p-8 shadow-deep">
+        <div className="bg-card border border-border rounded-2xl sm:rounded-3xl p-5 sm:p-6 md:p-8 shadow-deep">
           <div className="space-y-6">
             <div>
               <div className="flex justify-between items-center mb-3">
@@ -673,17 +731,17 @@ function ReturnCalculator() {
                 onChange={(e) => setAmount(Number(e.target.value))}
                 className="w-full h-2 bg-[#f2e2c9] rounded-lg appearance-none cursor-pointer accent-primary"
               />
-              <div className="flex justify-between text-[11px] text-[#8a7a68] mt-2 font-medium">
-                <span>₹50,000</span>
-                <span>₹10,00,000</span>
-                <span>₹25,00,000</span>
-                <span>₹50,00,000</span>
+              <div className="flex justify-between gap-1 text-[9px] sm:text-[11px] text-[#8a7a68] mt-2 font-medium">
+                <span className="shrink-0">₹50K</span>
+                <span className="shrink-0 hidden min-[400px]:inline">₹10L</span>
+                <span className="shrink-0">₹25L</span>
+                <span className="shrink-0">₹50L</span>
               </div>
             </div>
 
             <div className="border-t border-[#ece3d8] my-6" />
 
-            <div className="grid md:grid-cols-3 gap-6 text-center">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 text-center">
               <div className="bg-[#fcf8f2] border border-[#eee5db] rounded-2xl p-5">
                 <div className="text-xs uppercase tracking-wider text-[#8a7a68] font-semibold">Monthly Return (5%)</div>
                 <div className="text-2xl font-bold text-[#7f4e1c] font-display mt-2">
@@ -752,13 +810,13 @@ function Bonus() {
   ];
 
   return (
-    <section id="bonus" className="py-24 bg-[#faf6f0] scroll-mt-10 overflow-hidden relative">
+    <section id="bonus" className={`${sectionY} bg-[#faf6f0] scroll-mt-10 overflow-hidden relative`}>
       {/* Decorative ambient background accents */}
       <div className="absolute top-1/2 left-0 -translate-y-1/2 w-72 h-72 bg-[#f2e2c9] rounded-full filter blur-3xl opacity-40 -z-10" />
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-[#edd8c4] rounded-full filter blur-3xl opacity-35 -z-10" />
 
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="grid lg:grid-cols-12 gap-12 lg:gap-16 items-center">
+      <div className={containerClass}>
+        <div className="grid lg:grid-cols-12 gap-8 sm:gap-12 lg:gap-16 items-center">
           
           {/* Left Column: Copy & Value Proposition */}
           <div className="lg:col-span-5 text-left">
@@ -829,7 +887,7 @@ function Bonus() {
               ].map((b, idx) => (
                 <div 
                   key={idx} 
-                  className={`relative p-8 rounded-3xl border-2 ${b.bg} ${b.borderColor} transition-all duration-300 group hover:shadow-lg flex flex-col justify-between overflow-hidden`}
+                  className={`relative p-6 sm:p-8 rounded-3xl border-2 ${b.bg} ${b.borderColor} transition-all duration-300 group hover:shadow-lg flex flex-col justify-between overflow-hidden`}
                 >
                   <div>
                     {/* Top badging */}
@@ -875,14 +933,14 @@ function Bonus() {
                 className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105" 
                 referrerPolicy="no-referrer" 
               />
-              <div className="absolute bottom-5 left-6 right-6 z-10 text-left text-white flex items-center justify-between">
+              <div className="absolute bottom-4 sm:bottom-5 left-4 sm:left-6 right-4 sm:right-6 z-10 text-left text-white flex flex-col sm:flex-row sm:items-end gap-3 sm:justify-between">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-[#f2e2c9]">Our Standard</p>
-                  <h4 className="font-display font-bold text-lg leading-tight mt-0.5">State-of-the-Art Caring Farms</h4>
+                  <p className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-[#f2e2c9]">Our Standard</p>
+                  <h4 className="font-display font-bold text-base sm:text-lg leading-tight mt-0.5">State-of-the-Art Caring Farms</h4>
                 </div>
                 <a 
                   href="#contact" 
-                  className="bg-white/10 hover:bg-white text-white hover:text-[#5c2d11] backdrop-blur-sm rounded-full text-[11px] font-bold px-4 py-2 transition-all shrink-0 hover:scale-105"
+                  className="bg-white/10 hover:bg-white text-white hover:text-[#5c2d11] backdrop-blur-sm rounded-full text-[11px] font-bold px-4 py-2 transition-all shrink-0 hover:scale-105 self-start sm:self-auto"
                 >
                   View Details
                 </a>
@@ -901,7 +959,7 @@ function Contact() {
   return (
     <section 
       id="contact" 
-      className="py-24 text-primary-foreground relative overflow-hidden isolate"
+      className={`${sectionY} text-primary-foreground relative overflow-hidden isolate`}
     >
       <div className="absolute inset-0 -z-10 bg-[#1c0f05]">
         {/* Base rich glowing central light gradient */}
@@ -919,15 +977,15 @@ function Contact() {
           }}
         />
       </div>
-      <div className="max-w-5xl mx-auto px-6 text-center relative">
-        <img src={logo} alt="Gaulaxmi" className="h-20 w-20 mx-auto mb-6 opacity-90 animate-float bg-[#faf6f0] rounded-[50px] p-2.5" referrerPolicy="no-referrer" />
-        <h2 className="text-[36px] sm:text-[44px] leading-[1.1] sm:leading-[1.08] text-white font-display font-semibold text-balance">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center relative">
+        <img src={logo} alt="Gaulaxmi" className="h-16 w-16 sm:h-20 sm:w-20 mx-auto mb-5 sm:mb-6 opacity-90 animate-float bg-[#faf6f0] rounded-[50px] p-2.5" referrerPolicy="no-referrer" />
+        <h2 className={`${sectionHeadingClass} text-white`}>
           Begin your journey with Gaulaxmi.
         </h2>
         <p className="mt-5 text-cream/90 max-w-2xl mx-auto text-base sm:text-lg">
           Questions about plans, returns, or automated onboarding? Our dedicated advisors are one message away.
         </p>
-        <div className="mt-12 grid sm:grid-cols-3 gap-6">
+        <div className="mt-10 sm:mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
           {[
             { icon: Phone, label: "Call us", value: "+91 · Contact Team" },
             { icon: Mail, label: "Email Support", value: "info@gaulaxmi.io" },
@@ -981,10 +1039,10 @@ function GetInTouch() {
   };
 
   return (
-    <section id="join-form" className="py-24 bg-[#faf6f0] scroll-mt-10">
-      <div className="max-w-6xl mx-auto px-6">
+    <section id="join-form" className={`${sectionY} bg-[#faf6f0] scroll-mt-10`}>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6">
         {/* Header centered */}
-        <div className="text-center mb-16">
+        <div className="text-center mb-10 sm:mb-16">
           <div className="inline-flex items-center rounded-full bg-[#f2e2c9] px-6 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#9a5f23] mb-5">
             GET IN TOUCH
           </div>
@@ -997,10 +1055,10 @@ function GetInTouch() {
         </div>
 
         {/* Form and Info Section Grid */}
-        <div className="grid lg:grid-cols-12 gap-10 items-stretch">
+        <div className="grid lg:grid-cols-12 gap-6 sm:gap-10 items-stretch">
           
           {/* Left card - Gaulaxmi Info Card */}
-          <div className="lg:col-span-5 bg-[#5c2d11] rounded-[2.5rem] p-8 sm:p-10 text-white flex flex-col justify-between shadow-xl relative overflow-hidden">
+          <div className="lg:col-span-5 bg-[#5c2d11] rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-8 lg:p-10 text-white flex flex-col justify-between shadow-xl relative overflow-hidden">
             <div className="relative z-10 flex flex-col items-center">
               {/* Premium Circular Cow Logo */}
               <div className="w-16 h-16 bg-[#faf6f0] rounded-full p-2.5 flex items-center justify-center mb-6 shadow-inner">
@@ -1059,7 +1117,7 @@ function GetInTouch() {
           </div>
 
           {/* Right card - Form Card */}
-          <div className="lg:col-span-7 bg-white rounded-[2.5rem] p-8 sm:p-10 shadow-lg border border-border/10 flex flex-col justify-between">
+          <div className="lg:col-span-7 bg-white rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-8 lg:p-10 shadow-lg border border-border/10 flex flex-col justify-between">
             <h3 className="font-display text-2xl font-bold text-[#3d1e03] mb-6 text-left">
               Registration Inquiry
             </h3>
@@ -1201,8 +1259,8 @@ function WhyChoose() {
     { icon: Flower2, t: "Spiritual Purpose", d: "Every investment supports the welfare of Desi cows and promotes the ancient Vedic tradition of Gau Seva." },
   ];
   return (
-    <section id="why" className="py-24 bg-gradient-warm">
-      <div className="max-w-7xl mx-auto px-6">
+    <section id="why" className={`${sectionY} bg-gradient-warm`}>
+      <div className={containerClass}>
         <div className="text-center mb-14">
           <div className={sectionTagClass}>Our Edge</div>
           <h2 className={sectionHeadingClass}>
@@ -1210,11 +1268,11 @@ function WhyChoose() {
           </h2>
           <p className={sectionParagraphClass}>Built on trust, backed by assets, driven by purpose</p>
         </div>
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {items.map((f, i) => (
             <div
               key={f.t}
-              className="group bg-card border border-border p-8 rounded-[20px] shadow-soft hover:-translate-y-2 hover:shadow-deep transition-all duration-300"
+              className="group bg-card border border-border p-6 sm:p-8 rounded-[20px] shadow-soft hover:-translate-y-2 hover:shadow-deep transition-all duration-300"
               style={{ animationDelay: `${i * 80}ms` }}
             >
               <div className="w-14 h-14 bg-secondary/60 rounded-[15px] flex items-center justify-center mb-6 group-hover:bg-brand-gradient transition-all duration-300">
@@ -1232,16 +1290,16 @@ function WhyChoose() {
 
 function Footer() {
   return (
-    <footer className="bg-bark text-cream/80 py-10">
-      <div className="max-w-7xl mx-auto px-6 flex flex-wrap gap-6 items-center justify-between">
-        <div className="flex items-center gap-3">
+    <footer className="bg-bark text-cream/80 py-8 sm:py-10">
+      <div className={`${containerClass} flex flex-col md:flex-row gap-6 items-center md:justify-between text-center md:text-left`}>
+        <div className="flex items-center gap-3 justify-center md:justify-start">
           <img src={logo} alt="" className="h-9 w-9" referrerPolicy="no-referrer" />
           <div>
             <div className="font-display text-cream font-bold">Gaulaxmi Global Wellness</div>
             <div className="text-xs text-cream/60">© {new Date().getFullYear()} · All rights reserved</div>
           </div>
         </div>
-        <div className="text-xs text-cream/60 max-w-md md:text-right leading-relaxed">
+        <div className="text-xs text-cream/60 max-w-md md:text-right leading-relaxed mx-auto md:mx-0">
           Investments are subject to market and operational risks. Past performance does not guarantee future returns.
         </div>
       </div>
@@ -1251,9 +1309,9 @@ function Footer() {
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-background text-foreground antialiased selection:bg-[#f2e2c9] selection:text-[#9a5f23]">
+    <div className="min-h-screen overflow-x-hidden bg-background text-foreground antialiased selection:bg-[#f2e2c9] selection:text-[#9a5f23]">
       <Nav />
-      <main>
+      <main className="pt-14 sm:pt-16">
         <Hero />
         <About />
         <WhyChoose />
