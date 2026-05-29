@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import logo from "./assets/gaulaxmi-logo.png";
-import heroCow from "./assets/hero-cow.jpg";
+import heroCow from "./assets/hero-cow.png";
 import products from "./assets/images/cow_products_studio_1779970801272.png";
 import farm from "./assets/farm.jpg";
 import pattern from "./assets/pattern.svg";
@@ -41,7 +41,9 @@ import {
   Send,
   MessageCircle,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ChevronDown,
+  FileDown
 } from "lucide-react";
 
 const sectionTagClass =
@@ -99,7 +101,7 @@ function Hero() {
           alt="Sacred Gir cow at golden hour"
           width={1920}
           height={1080}
-          className="w-full h-full object-cover object-right sm:object-[85%_center] animate-zoom-slow opacity-90"
+          className="w-full h-full object-cover object-right sm:object-[85%_center] animate-zoom-slow opacity-90 scale-x-[-1]"
           referrerPolicy="no-referrer"
         />
         {/* Layered gradient overlays for legibility + warmth - fading completely to transparent on the right */}
@@ -167,10 +169,24 @@ function Hero() {
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1.5 transition-transform" />
             </a>
             <a
-              href="#calculator"
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                const pdfContent = `%PDF-1.4\n1 0 obj < < /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj < < /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj < < /Type /Page /Parent 2 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /MediaBox [0 0 595 842] /Contents 4 0 R >> endobj\n4 0 obj < < /Length 195 >> stream\nBT\n/F1 18 Tf\n50 780 Td\n(Gaulaxmi Global Wellness) Tj\n0 -30 Td\n/F1 12 Tf\n(Corporate Presentation & Executive Project Report) Tj\n0 -40 Td\n(Welcome to Gaulaxmi. This document acts as your overview.) Tj\n0 -25 Td\n(Timeless heritage meets multi-income yield engines.) Tj\n0 -25 Td\n(Secured passive monthly ROI of 5% for 60 months.) Tj\nET\nendstream\nendobj\nxref\n0 5\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n0000000282 00000 n \ntrailer < < /Size 5 /Root 1 0 R >>\nstartxref\n549\n%%EOF`;
+                const blob = new Blob([pdfContent], { type: "application/pdf" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "Gaulaxmi_Corporate_Presentation.pdf";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              }}
               className="inline-flex items-center gap-2 backdrop-blur-md bg-cream/10 border border-cream/35 text-cream px-8 py-4 rounded-full font-medium hover:bg-cream/20 transition-all duration-300"
             >
-              Launch Live Estimator
+              <FileDown className="w-4 h-4 text-gold" />
+              Download Full PDF
             </a>
           </motion.div>
 
@@ -1112,18 +1128,23 @@ function GetInTouch() {
                 <label className="text-xs font-[#3d1e03] tracking-wider text-[#3d1e03] font-bold uppercase mb-2 block">
                   Investment Plan *
                 </label>
-                <select 
-                  value={plan}
-                  onChange={(e) => setPlan(e.target.value)}
-                  required
-                  className="w-full bg-[#faf6f0] border-2 border-[#edd8c4] focus:ring-2 focus:ring-[#9a5f23]/20 focus:border-[#5c2d11] outline-none rounded-[10px] px-5 py-3.5 text-sm text-[#3d1e03] transition-all appearance-none cursor-pointer"
-                >
-                  <option value="" disabled>Select a Plan</option>
-                  <option value="bronze">Bronze Gau Advisor (₹10,000 - ₹50,000)</option>
-                  <option value="silver">Silver Gau Patron (₹50,000 - ₹2,000,000)</option>
-                  <option value="gold">Gold Gau Partner (₹2,000,000 - ₹5,000,000)</option>
-                  <option value="diamond">Diamond Gau Visionary (₹5,000,000+)</option>
-                </select>
+                <div className="relative w-full">
+                  <select 
+                    value={plan}
+                    onChange={(e) => setPlan(e.target.value)}
+                    required
+                    className="w-full bg-[#faf6f0] border-2 border-[#edd8c4] focus:ring-2 focus:ring-[#9a5f23]/20 focus:border-[#5c2d11] outline-none rounded-[10px] pl-5 pr-12 py-3.5 text-sm text-[#3d1e03] transition-all appearance-none cursor-pointer"
+                  >
+                    <option value="" disabled>Select a Plan</option>
+                    <option value="bronze">Bronze Gau Advisor (₹10,000 - ₹50,000)</option>
+                    <option value="silver">Silver Gau Patron (₹50,000 - ₹2,000,000)</option>
+                    <option value="gold">Gold Gau Partner (₹2,000,000 - ₹5,000,000)</option>
+                    <option value="diamond">Diamond Gau Visionary (₹5,000,000+)</option>
+                  </select>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-[#9a5f23]">
+                    <ChevronDown className="w-5 h-5" />
+                  </div>
+                </div>
               </div>
 
               <div className="text-left">
