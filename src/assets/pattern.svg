@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" fill="none">
+  <!-- Subtle repeating geometric and devotional sacred patterns -->
+  <path d="M60 0 C70 30, 90 50, 120 60 C90 70, 70 90, 60 120 C50 90, 30 70, 0 60 C30 50, 50 30, 60 0 Z" stroke="rgba(217, 160, 91, 0.55)" stroke-width="1" />
+  <circle cx="60" cy="60" r="15" stroke="rgba(217, 160, 91, 0.6)" stroke-width="0.8" />
+  <circle cx="60" cy="60" r="4" fill="rgba(217, 160, 91, 0.6)" />
+  
+  <!-- Corner elements for seamless tile repeating -->
+  <path d="M0 0 C10 15, 15 20, 30 30" stroke="rgba(217, 160, 91, 0.4)" stroke-width="0.8" />
+  <path d="M120 0 C110 15, 105 20, 90 30" stroke="rgba(217, 160, 91, 0.4)" stroke-width="0.8" />
+  <path d="M0 120 C10 105, 15 100, 30 90" stroke="rgba(217, 160, 91, 0.4)" stroke-width="0.8" />
+  <path d="M120 120 C110 105, 105 100, 90 90" stroke="rgba(217, 160, 91, 0.4)" stroke-width="0.8" />
+</svg>
