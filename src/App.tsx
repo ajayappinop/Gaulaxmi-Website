@@ -4,7 +4,6 @@ import logo from "./assets/gaulaxmi-logo.png";
 import heroCow from "./assets/hero-cow.png";
 import products from "./assets/images/cow_products_studio_1779970801272.png";
 import farm from "./assets/farm.jpg";
-import pattern from "./assets/pattern.svg";
 import btxToken from "./assets/images/btx_token_logo_1779969091643.png";
 import tradingIncomeImg from "./assets/images/trading_income_chart_1779969516816.png";
 import realEstateImg from "./assets/images/real_estate_luxury_1779969905480.png";
@@ -195,7 +194,7 @@ function Hero() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 1, delay: 0.65 }}
-            className="mt-14 grid grid-cols-3 gap-4 sm:gap-6 max-w-lg border-t border-cream/20 pt-8"
+            className="mt-14 grid grid-cols-3 gap-4 sm:gap-6 border-t border-cream/20 pt-8"
           >
             {[
               { v: "5.0%", l: "Assured Monthly return", s: "Every 30 Days" },
@@ -204,7 +203,7 @@ function Hero() {
             ].map((s, idx) => (
               <div key={s.l} className="border-l border-gold/50 pl-4 hover:border-cream transition-colors">
                 <span className="block font-display text-2xl sm:text-4xl text-gold font-bold leading-none">{s.v}</span>
-                <span className="block text-[10px] uppercase tracking-[0.15em] text-cream/70 mt-1.5 font-semibold">
+                <span className="block text-[10px] uppercase tracking-[0.15em] text-cream/70 mt-1.5 font-semibold whitespace-nowrap">
                   {s.l}
                 </span>
                 <span className="block text-[8px] tracking-[0.05em] text-cream/40 mt-0.5">
@@ -432,7 +431,7 @@ function CowProductsCarousel() {
   };
 
   return (
-    <section id="cow-products-carousel" className="py-24 bg-[#faf5ef] overflow-hidden">
+    <section id="cow-products-carousel" className="py-24 bg-[#faf5ef] overflow-visible">
       <div className="max-w-7xl mx-auto px-6">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
           <div>
@@ -467,7 +466,7 @@ function CowProductsCarousel() {
 
         <div 
           ref={scrollRef}
-          className="flex gap-6 overflow-x-auto scrollbar-none snap-x snap-mandatory py-4 -mx-6 px-6"
+          className="flex gap-6 overflow-x-auto overflow-y-visible scrollbar-none snap-x snap-mandatory py-8 -mx-6 px-6"
           style={{ scrollSnapType: "x mandatory" }}
         >
           {cowProductsList.map((product, i) => (
@@ -477,9 +476,9 @@ function CowProductsCarousel() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-100px" }}
               transition={{ duration: 0.5, delay: i * 0.1 }}
-              className="flex-shrink-0 w-[280px] sm:w-[350px] md:w-[380px] bg-card rounded-3xl border border-border/80 overflow-hidden shadow-soft hover:shadow-deep transition-all duration-300 snap-start flex flex-col group"
+              className="flex-shrink-0 w-[280px] sm:w-[350px] md:w-[380px] bg-card rounded-3xl border border-border/80 overflow-visible shadow-soft hover:shadow-deep transition-all duration-300 snap-start flex flex-col group"
             >
-              <div className="relative h-64 overflow-hidden bg-gradient-to-br from-[#efe5db] to-[#f4eee6]">
+              <div className="relative h-64 overflow-hidden rounded-t-3xl bg-gradient-to-br from-[#efe5db] to-[#f4eee6]">
                 <img
                   src={product.image}
                   alt={product.title}
@@ -832,9 +831,6 @@ function Bonus() {
                   key={idx} 
                   className={`relative p-8 rounded-3xl border-2 ${b.bg} ${b.borderColor} transition-all duration-300 group hover:shadow-lg flex flex-col justify-between overflow-hidden`}
                 >
-                  {/* Subtle vector lines pattern in card backdrop */}
-                  <div className="absolute inset-x-0 bottom-0 h-16 bg-repeat opacity-[0.03] pointer-events-none" style={{ backgroundImage: `url(${pattern})` }} />
-                  
                   <div>
                     {/* Top badging */}
                     <div className="flex justify-between items-start mb-4">
@@ -922,17 +918,9 @@ function Contact() {
             backgroundImage: "repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.5) 0px, rgba(0, 0, 0, 0.5) 10px, transparent 10px, transparent 20px)",
           }}
         />
-        {/* Subtle decorative pattern.svg layout overlay */}
-        <div 
-          className="absolute inset-0 opacity-20 bg-repeat mix-blend-overlay" 
-          style={{
-            backgroundImage: `url(${pattern})`,
-            backgroundRepeat: "repeat",
-          }}
-        />
       </div>
       <div className="max-w-5xl mx-auto px-6 text-center relative">
-        <img src={logo} alt="Gaulaxmi" className="h-20 w-20 mx-auto mb-6 opacity-90 animate-float" referrerPolicy="no-referrer" />
+        <img src={logo} alt="Gaulaxmi" className="h-20 w-20 mx-auto mb-6 opacity-90 animate-float bg-[#faf6f0] rounded-[50px] p-2.5" referrerPolicy="no-referrer" />
         <h2 className="text-[36px] sm:text-[44px] leading-[1.1] sm:leading-[1.08] text-white font-display font-semibold text-balance">
           Begin your journey with Gaulaxmi.
         </h2>
@@ -1013,12 +1001,9 @@ function GetInTouch() {
           
           {/* Left card - Gaulaxmi Info Card */}
           <div className="lg:col-span-5 bg-[#5c2d11] rounded-[2.5rem] p-8 sm:p-10 text-white flex flex-col justify-between shadow-xl relative overflow-hidden">
-            {/* Background elements to match luxurious branding */}
-            <div className="absolute inset-0 opacity-5 pointer-events-none bg-repeat" style={{ backgroundImage: `url(${pattern})` }} />
-            
             <div className="relative z-10 flex flex-col items-center">
               {/* Premium Circular Cow Logo */}
-              <div className="w-16 h-16 bg-[#401f09] rounded-full p-2.5 flex items-center justify-center mb-6 shadow-inner border border-white/5">
+              <div className="w-16 h-16 bg-[#faf6f0] rounded-full p-2.5 flex items-center justify-center mb-6 shadow-inner">
                 <img src={logo} alt="Gaulaxmi Logo" className="w-12 h-12 object-contain opacity-95 animate-float" referrerPolicy="no-referrer" />
               </div>
               

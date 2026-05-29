@@ -1,8 +1,0 @@
-{
-  "name": "Gaulaxmi Global Wellness",
-  "description": "Multi-income cow-backed wealth platform yielding 5% monthly returns, milestones, and physical cow rewards.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}
