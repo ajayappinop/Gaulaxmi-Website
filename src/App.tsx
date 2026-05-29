@@ -54,6 +54,8 @@ const sectionTagClass =
 const sectionHeadingClass =
   "text-[1.75rem] sm:text-[2.5rem] md:text-[44px] leading-[1.15] sm:leading-[1.08] text-[rgba(44,26,14,1)] font-display font-semibold text-balance";
 const sectionParagraphClass = "mt-4 sm:mt-6 text-sm sm:text-base md:text-lg text-[#8f5f3a] leading-relaxed";
+const ctaGradientClass =
+  "bg-[linear-gradient(90deg,#9a4f12_0%,#7a3d0d_55%,#6a3208_100%)] text-white shadow-md hover:scale-[1.02] transition-all";
 
 const navLinks = [
   { href: "#about", label: "About" },
@@ -551,7 +553,7 @@ function CowProductsCarousel() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-100px" }}
               transition={{ duration: 0.5, delay: i * 0.1 }}
-              className="flex-shrink-0 w-[min(85vw,280px)] sm:w-[350px] md:w-[380px] bg-card rounded-3xl border border-border/80 overflow-visible shadow-soft hover:shadow-deep transition-all duration-300 snap-start flex flex-col group"
+              className="flex-shrink-0 w-[min(85vw,280px)] sm:w-[350px] md:w-[380px] bg-white rounded-3xl border border-border/80 overflow-visible shadow-soft hover:shadow-deep transition-all duration-300 snap-start flex flex-col group"
             >
               <div className="relative h-64 overflow-hidden rounded-t-3xl bg-gradient-to-br from-[#efe5db] to-[#f4eee6]">
                 <img
@@ -801,7 +803,7 @@ function ReturnCalculator() {
                   )}
                 </div>
               </div>
-              <a href="#contact" className="bg-primary text-white font-semibold text-xs py-2 px-5 rounded-full hover:bg-accent transition-colors shrink-0 whitespace-nowrap">
+              <a href="#contact" className={`${ctaGradientClass} font-semibold text-xs py-2 px-5 rounded-full shrink-0 whitespace-nowrap inline-flex items-center`}>
                 Lock Plan Returns
               </a>
             </div>
@@ -1246,7 +1248,7 @@ function GetInTouch() {
               <button 
                 type="submit" 
                 disabled={loading}
-                className="w-full bg-[#5c2d11] hover:bg-[#401f09] disabled:bg-stone-400 disabled:cursor-not-allowed text-white font-bold py-4 rounded-full transition-all duration-300 flex items-center justify-center gap-2.5 mt-4 group shadow-md cursor-pointer"
+                className={`w-full ${ctaGradientClass} disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 font-bold py-4 rounded-full flex items-center justify-center gap-2.5 mt-4 group cursor-pointer`}
               >
                 {loading ? (
                   <span className="inline-block w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
