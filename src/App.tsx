@@ -130,7 +130,13 @@ function Nav({ onDashboardOpen }: { onDashboardOpen: (tab: string) => void }) {
               {isLoggedIn ? (
                 <div className="relative">
                   <button onClick={() => setProfileDropdownOpen(!profileDropdownOpen)} className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-2 rounded-full cursor-pointer hover:bg-primary/20 transition-all">
-                      <User className="w-5 h-5"/>
+                      {user?.profileImage ? (
+                        <div className="w-6 h-6 rounded-full overflow-hidden">
+                          <img src={user.profileImage} alt={user?.name || "User"} className="w-full h-full object-cover" />
+                        </div>
+                      ) : (
+                        <User className="w-5 h-5" />
+                      )}
                       <span className="text-sm font-semibold max-w-[100px] truncate hidden sm:inline">{user?.name}</span>
                   </button>
                   {profileDropdownOpen && (
@@ -138,7 +144,7 @@ function Nav({ onDashboardOpen }: { onDashboardOpen: (tab: string) => void }) {
                         <button className="text-left px-4 py-2 hover:bg-secondary/50 text-sm flex items-center gap-2" onClick={() => { setProfileDropdownOpen(false); onDashboardOpen('overview'); }}><Wallet className="w-4 h-4"/> Dashboard</button>
                         <button className="text-left px-4 py-2 hover:bg-secondary/50 text-sm flex items-center gap-2" onClick={() => { setProfileDropdownOpen(false); onDashboardOpen('investments'); }}><CheckCircle className="w-4 h-4"/> Investment Plans</button>
                         <button className="text-left px-4 py-2 hover:bg-secondary/50 text-sm flex items-center gap-2" onClick={() => { setProfileDropdownOpen(false); onDashboardOpen('transactions'); }}><Clock className="w-4 h-4"/> Transaction History</button>
-                        <button className="text-left px-4 py-2 hover:bg-secondary/50 text-sm flex items-center gap-2" onClick={() => { setProfileDropdownOpen(false); onDashboardOpen('kyc'); }}><ShieldCheck className="w-4 h-4"/> KYC Details</button>
+                        <button className="text-left px-4 py-2 hover:bg-secondary/50 text-sm flex items-center gap-2" onClick={() => { setProfileDropdownOpen(false); onDashboardOpen('kyc'); }}><ShieldCheck className="w-4 h-4"/> KYC</button>
                         <hr className="my-1 border-border/50"/>
                         <button className="text-left px-4 py-2 hover:bg-red-50 text-red-600 text-sm flex items-center gap-2" onClick={() => { setProfileDropdownOpen(false); logout(); }}><LogOut className="w-4 h-4"/> Sign Out</button>
                       </div>
@@ -207,6 +213,7 @@ interface FlyingParticle {
 }
 
 function Hero({ isLoggedIn }: { isLoggedIn: boolean }) {
+  const { user } = useAuth();
   return (
     <section id="top" className="relative min-h-screen flex items-center overflow-hidden isolate bg-[#1c120c]">
       {/* Background image with slow Ken Burns zoom shifted to the right */}
@@ -336,8 +343,12 @@ function Hero({ isLoggedIn }: { isLoggedIn: boolean }) {
         <div className="w-full mt-16 lg:mt-0 flex justify-center lg:justify-end">
            {!isLoggedIn ? <AuthForm /> : (
              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-8 lg:p-10 shadow-2xl text-center max-w-sm w-full mx-auto lg:mx-0">
-                <div className="w-16 h-16 bg-gradient-gold rounded-full flex items-center justify-center text-bark mx-auto mb-6 shadow-glow">
-                   <User className="w-8 h-8" />
+                <div className="w-16 h-16 bg-gradient-gold rounded-full flex items-center justify-center text-bark mx-auto mb-6 shadow-glow overflow-hidden">
+                   {user?.profileImage ? (
+                     <img src={user.profileImage} alt={user?.name || "User"} className="w-full h-full object-cover" />
+                   ) : (
+                     <User className="w-8 h-8" />
+                   )}
                 </div>
                 <h3 className="font-display font-bold text-2xl text-cream mb-2">Welcome Back!</h3>
                 <p className="text-cream/70 text-sm mb-6 leading-relaxed">
