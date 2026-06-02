@@ -132,7 +132,6 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
 
   // Delete & Deactivate confirmations
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // KYC Multi-Step Form States
   const [kycStep, setKycStep] = useState(1);
@@ -311,7 +310,8 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
                <TabButton active={activeTab === 'referrals'} onClick={() => setActiveTab('referrals')} label="Refer & Earn" icon={<Users className="w-4 h-4" />} />
                <TabButton active={activeTab === 'hierarchy'} onClick={() => setActiveTab('hierarchy')} label="My Network" icon={<Network className="w-4 h-4" />} />
                <TabButton active={activeTab === 'kyc'} onClick={() => setActiveTab('kyc')} label="KYC" icon={<ShieldCheck className="w-4 h-4" />} />
-               <TabButton active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} label="Profile & Settings" icon={<Settings className="w-4 h-4" />} />
+               <TabButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} label="My Profile" icon={<UserRound className="w-4 h-4" />} />
+               <TabButton active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} label="Settings" icon={<Settings className="w-4 h-4" />} />
              </nav>
              
              <button 
@@ -1495,32 +1495,29 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
               </motion.div>
             )}
 
-            {activeTab === 'settings' && (
+            {activeTab === 'profile' && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 max-w-4xl font-sans">
                 <div>
-                  <h2 className="font-display font-bold text-2xl text-stone-900">Profile & Account Settings</h2>
-                  <p className="text-sm text-muted-foreground font-sans mt-1">Manage your identity details, update password, and configure credential preference parameters.</p>
+                  <h2 className="font-display font-bold text-2xl text-stone-900">My Profile</h2>
+                  <p className="text-sm text-muted-foreground font-sans mt-1">View and manage your comprehensive identity, network lineage, and account details.</p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {/* Left Column - Navigation Anchors */}
-                  <div className="md:col-span-1 space-y-3 bg-white border border-stone-200 rounded-3xl p-5 shadow-sm h-fit">
-                    <div className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-2">Settings Sections</div>
-                    <a href="#personal-info" className="flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-stone-700 hover:bg-stone-50 rounded-xl transition duration-150">
-                      <UserRound className="w-4 h-4 text-[#7f4e1c]" /> Personal Information
+                  <div className="md:col-span-1 space-y-3 bg-white border border-stone-200 rounded-3xl p-5 shadow-sm h-fit sticky top-6">
+                    <div className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-2">Profile Sections</div>
+                    <a href="#personal-details" className="flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-stone-700 hover:bg-stone-50 rounded-xl transition duration-150">
+                      <UserRound className="w-4 h-4 text-[#7f4e1c]" /> Personal Details
                     </a>
-                    <a href="#security-settings" className="flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-stone-700 hover:bg-stone-50 rounded-xl transition duration-150">
-                      <Lock className="w-4 h-4 text-[#7f4e1c]" /> Password & Security
-                    </a>
-                    <a href="#danger-zone" className="flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-xl transition duration-150">
-                      <AlertTriangle className="w-4 h-4" /> Danger Zone
+                    <a href="#network-details" className="flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-stone-700 hover:bg-stone-50 rounded-xl transition duration-150">
+                      <Network className="w-4 h-4 text-[#7f4e1c]" /> Network Lineage
                     </a>
                   </div>
 
-                  {/* Right Column - Setup Fields */}
+                  {/* Right Column - Profile Details */}
                   <div className="md:col-span-2 space-y-6">
                     {/* Personal Information Card */}
-                    <div id="personal-info" className="bg-white border border-stone-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-4">
+                    <div id="personal-details" className="bg-white border border-stone-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-4">
                       <div className="flex flex-col sm:flex-row items-center gap-6 border-b border-stone-100 pb-6">
                         <div className="relative group cursor-pointer shrink-0">
                           <input 
@@ -1539,7 +1536,7 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
                             }}
                             title="Upload Profile Avatar"
                           />
-                          <div className="w-20 h-20 rounded-full border-2 border-stone-200 bg-[#f8f1e8] overflow-hidden flex items-center justify-center relative">
+                          <div className="w-20 h-20 rounded-full border-2 border-stone-200 bg-[#f8f1e8] overflow-hidden flex items-center justify-center relative shadow-sm">
                             {profileImage ? (
                               <img src={profileImage} alt="Profile Avatar" className="w-full h-full object-cover" />
                             ) : (
@@ -1563,7 +1560,7 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
                             type="text"
                             value={profileName}
                             onChange={(e) => setProfileName(e.target.value)}
-                            className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#7f4e1c]/50 focus:ring-1 focus:ring-[#7f4e1c]/10"
+                            className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#7f4e1c]/50 focus:ring-1 focus:ring-[#7f4e1c]/10 transition-colors"
                             placeholder="John Doe"
                           />
                         </div>
@@ -1574,7 +1571,7 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
                             type="email"
                             value={profileEmail}
                             onChange={(e) => setProfileEmail(e.target.value)}
-                            className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#7f4e1c]/50 focus:ring-1 focus:ring-[#7f4e1c]/10"
+                            className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#7f4e1c]/50 focus:ring-1 focus:ring-[#7f4e1c]/10 transition-colors"
                             placeholder="john@example.com"
                           />
                         </div>
@@ -1585,7 +1582,7 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
                             type="text"
                             value={profilePhone}
                             onChange={(e) => setProfilePhone(e.target.value)}
-                            className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#7f4e1c]/50 focus:ring-1 focus:ring-[#7f4e1c]/10"
+                            className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#7f4e1c]/50 focus:ring-1 focus:ring-[#7f4e1c]/10 transition-colors"
                             placeholder="+91 98765 43210"
                           />
                         </div>
@@ -1601,13 +1598,76 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
                             updateProfile(profileName, profileEmail, profilePhone, profileImage);
                             toast.success("Profile details saved successfully!");
                           }}
-                          className="px-5 py-2.5 bg-[#7f4e1c] text-white hover:bg-[#6c4116] rounded-xl font-semibold text-xs transition duration-150 cursor-pointer"
+                          className="px-5 py-2.5 bg-[#7f4e1c] text-white hover:bg-[#6c4116] rounded-xl font-semibold text-xs transition-colors shadow-sm"
                         >
                           Save Changes
                         </button>
                       </div>
                     </div>
 
+                    <div id="network-details" className="bg-white border border-stone-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-4">
+                      <div className="flex items-center gap-3 border-b border-stone-100 pb-4">
+                        <div className="w-9 h-9 rounded-full bg-[#f8f1e8] text-[#7f4e1c] flex items-center justify-center">
+                          <Network className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h3 className="font-display font-bold text-base text-stone-900">Network & Lineage</h3>
+                          <p className="text-xs text-muted-foreground mt-0.5">Details regarding your position within the Gaulaxmi network.</p>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+                         <div className="bg-stone-50 rounded-xl p-4 border border-stone-200 relative overflow-hidden">
+                           <span className="text-[10px] uppercase font-bold text-stone-400 block mb-1">Referred By (Sponsor)</span>
+                           <span className="font-bold text-stone-800 text-sm whitespace-nowrap text-ellipsis overflow-hidden">Priya Sharma (GLX-5489)</span>
+                           <Users className="absolute -bottom-2 -right-2 w-16 h-16 text-stone-200/50 -rotate-12 pointer-events-none" />
+                         </div>
+                         <div className="bg-stone-50 rounded-xl p-4 border border-stone-200 relative overflow-hidden">
+                           <span className="text-[10px] uppercase font-bold text-stone-400 block mb-1">Network Level</span>
+                           <span className="font-bold text-stone-800 text-sm">Level {user?.id === 'ID-GLX-001' ? '0 (Root Node)' : '3'}</span>
+                           <Network className="absolute -bottom-2 -right-2 w-16 h-16 text-stone-200/50 -rotate-12 pointer-events-none" />
+                         </div>
+                         <div className="bg-stone-50 rounded-xl p-4 border border-stone-200 relative overflow-hidden">
+                           <span className="text-[10px] uppercase font-bold text-stone-400 block mb-1">Join Date</span>
+                           <span className="font-bold text-stone-800 text-sm">October 14, 2025</span>
+                           <Clock className="absolute -bottom-2 -right-2 w-16 h-16 text-stone-200/50 -rotate-12 pointer-events-none" />
+                         </div>
+                         <div className="bg-stone-50 rounded-xl p-4 border border-stone-200 relative overflow-hidden">
+                           <span className="text-[10px] uppercase font-bold text-stone-400 block mb-1">Account Status</span>
+                           <div className="flex items-center gap-1.5 font-bold text-emerald-700 text-sm">
+                             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                             Active & Yielding
+                           </div>
+                           <ShieldCheck className="absolute -bottom-2 -right-2 w-16 h-16 text-emerald-100/50 -rotate-12 pointer-events-none" />
+                         </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'settings' && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 max-w-4xl font-sans">
+                <div>
+                  <h2 className="font-display font-bold text-2xl text-stone-900">Account Settings</h2>
+                  <p className="text-sm text-muted-foreground font-sans mt-1">Update password and configure credential preference parameters.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Left Column - Navigation Anchors */}
+                  <div className="md:col-span-1 space-y-3 bg-white border border-stone-200 rounded-3xl p-5 shadow-sm h-fit">
+                    <div className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-2">Settings Sections</div>
+                    <a href="#security-settings" className="flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-stone-700 hover:bg-stone-50 rounded-xl transition duration-150">
+                      <Lock className="w-4 h-4 text-[#7f4e1c]" /> Password & Security
+                    </a>
+                    <a href="#danger-zone" className="flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-xl transition duration-150">
+                      <AlertTriangle className="w-4 h-4" /> Danger Zone
+                    </a>
+                  </div>
+
+                  {/* Right Column - Setup Fields */}
+                  <div className="md:col-span-2 space-y-6">
                     {/* Change Password Card */}
                     <div id="security-settings" className="bg-white border border-stone-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-4">
                       <div className="flex items-center gap-3 border-b border-stone-100 pb-4">
@@ -1711,28 +1771,10 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
                           <button
                             onClick={() => {
                               setShowDeactivateConfirm(true);
-                              setShowDeleteConfirm(false);
                             }}
                             className="px-4 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 rounded-xl font-semibold text-xs transition cursor-pointer shrink-0"
                           >
                             Deactivate Account...
-                          </button>
-                        </div>
-
-                        {/* Delete Option */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white/80 border border-red-100 rounded-2xl">
-                          <div>
-                            <h4 className="font-bold text-sm text-red-950">Permanently Delete Account</h4>
-                            <p className="text-xs text-stone-500 max-w-md mt-0.5">Permanently purge all transaction history, active investment assets, wallet balances, and referral codes.</p>
-                          </div>
-                          <button
-                            onClick={() => {
-                              setShowDeleteConfirm(true);
-                              setShowDeactivateConfirm(false);
-                            }}
-                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold text-xs transition cursor-pointer shrink-0"
-                          >
-                            Delete Account...
                           </button>
                         </div>
                       </div>
@@ -1802,64 +1844,6 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
         </div>
       )}
 
-      {/* Delete Confirmation Popup Modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <motion.div 
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-white border border-stone-200 p-6 rounded-3xl shadow-xl max-w-md w-full relative space-y-4 font-sans"
-          >
-            <button 
-              onClick={() => setShowDeleteConfirm(false)}
-              className="absolute top-4 right-4 text-stone-400 hover:text-stone-600 rounded-full p-1.5 hover:bg-stone-100 transition cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            <div className="flex items-center gap-3 text-red-600">
-              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
-                <Trash2 className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-display font-bold text-base text-stone-900">Delete Account Permanently?</h3>
-                <p className="text-xs text-red-500">This action cannot be undone.</p>
-              </div>
-            </div>
-
-            <div className="text-xs text-red-800 space-y-2 bg-red-50/60 p-4 rounded-2xl border border-red-100">
-              <p className="font-bold text-red-950 text-center uppercase tracking-wider text-[10px]">CRITICAL WARNING</p>
-              <p className="leading-relaxed">
-                Proceeding will permanently purge your local session state and clean the following variables from storage:
-              </p>
-              <ul className="list-disc pl-4 space-y-1">
-                <li>Your direct referral connection link records</li>
-                <li>KYC submission files & identity status</li>
-                <li>Your total ledger wallet histories & active deposits</li>
-              </ul>
-            </div>
-
-            <div className="flex flex-col gap-2 pt-1">
-              <button
-                onClick={() => {
-                  deleteAccount();
-                  setShowDeleteConfirm(false);
-                  toast.success("Account permanently deleted.");
-                }}
-                className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-xs transition cursor-pointer text-center"
-              >
-                Yes, Purge & Delete Permanently
-              </button>
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="w-full py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-200 rounded-xl font-bold text-xs transition cursor-pointer text-center"
-              >
-                Cancel and Preserve Account
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      )}
     </div>
   );
 }

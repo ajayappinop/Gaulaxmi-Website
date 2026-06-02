@@ -21,7 +21,8 @@ import {
   Search,
   X,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ChevronDown
 } from 'lucide-react';
 
 // Enhanced Mock Hierarchy data representing the chain from Founder
@@ -268,20 +269,19 @@ const mockNetworkData: NetworkNode = {
 export function HierarchyTab() {
   const [view, setView] = useState<'flow' | 'grid' | 'list'>('flow');
   const [selectedNode, setSelectedNode] = useState<NetworkNode | null>(mockNetworkData.children[0].children[0].children[0]); // Default to "John Doe (You)"
-  const [focusUserOnly, setFocusUserOnly] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Filter root based on user choice
+  // Always use the direct referrer (Amrita Patel) as root, showing the user (John Doe) and user's children
   const activeRoot = useMemo(() => {
-    if (focusUserOnly) {
-      // Return John Doe as the root of the tree
-      const rajeshNode = mockNetworkData.children[0];
-      const amritaNode = rajeshNode.children[0];
-      const johnNode = amritaNode.children[0];
-      return johnNode;
-    }
-    return mockNetworkData;
-  }, [focusUserOnly]);
+    const rajeshNode = mockNetworkData.children[0];
+    const amritaNode = rajeshNode.children[0];
+    return amritaNode;
+  }, []);
+
+  const currentUserNode = useMemo(() => {
+    // Current user in this structure is RajesH -> Amrita -> John
+    return mockNetworkData.children[0].children[0].children[0];
+  }, []);
 
   // Flatten active root nodes to list all members for quick querying
   const allNodes = useMemo(() => {
@@ -344,22 +344,6 @@ export function HierarchyTab() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {/* Tree focus filter */}
-            <div className="flex bg-stone-100 rounded-xl p-1 border border-stone-200">
-              <button
-                onClick={() => setFocusUserOnly(false)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${!focusUserOnly ? 'bg-white text-bark shadow-sm' : 'text-muted-foreground hover:text-bark'}`}
-              >
-                Full Chain
-              </button>
-              <button
-                onClick={() => setFocusUserOnly(true)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${focusUserOnly ? 'bg-white text-bark shadow-sm' : 'text-muted-foreground hover:text-bark'}`}
-              >
-                My Org
-              </button>
-            </div>
-
             {/* View Toggles */}
             <div className="flex bg-white rounded-xl border border-stone-200 p-1 shadow-sm">
               <button
@@ -433,11 +417,11 @@ export function HierarchyTab() {
                   <strong>Referral Matrix:</strong> This view lists your direct referred network cards recursively grouped by depth. Click on any member to inspect their complete stats in the detail panel.
                 </p>
               </div>
-              <NetworkGrid rootNode={activeRoot} onSelect={setSelectedNode} searchQuery={searchQuery} />
+              <NetworkGrid rootNode={currentUserNode} excludeRoot={true} onSelect={setSelectedNode} searchQuery={searchQuery} />
             </div>
           ) : (
             <div className="p-6 overflow-y-auto h-full">
-              <NetworkList rootNode={activeRoot} onSelect={setSelectedNode} searchQuery={searchQuery} />
+              <NetworkList rootNode={currentUserNode} excludeRoot={true} onSelect={setSelectedNode} searchQuery={searchQuery} />
             </div>
           )}
         </div>
@@ -476,91 +460,101 @@ export function HierarchyTab() {
                         <span className="bg-primary text-primary-foreground text-[9px] px-1.5 py-0.5 rounded-full uppercase tracking-wider font-extrabold scale-95">You</span>
                       )}
                     </div>
-                    <div className="text-xs text-muted-foreground">{selectedNode.role}</div>
+                    {selectedNode.id !== activeRoot.id && (
+                      <div className="text-xs text-muted-foreground">{selectedNode.role}</div>
+                    )}
                   </div>
                 </div>
 
-                <hr className="border-stone-100" />
+                {selectedNode.id !== activeRoot.id && (
+                  <>
+                    <hr className="border-stone-100" />
 
-                {/* Info Fields */}
-                <div className="space-y-3 text-sm">
-                  <div className="flex items-center gap-2.5">
-                    <IdCard className="w-4 h-4 text-stone-400 shrink-0" />
-                    <span className="text-muted-foreground w-20 shrink-0">Member ID:</span>
-                    <span className="font-mono font-medium">{selectedNode.id}</span>
-                  </div>
+                    {/* Info Fields */}
+                    <div className="space-y-3 text-sm">
+                      <div className="flex items-center gap-2.5">
+                        <IdCard className="w-4 h-4 text-stone-400 shrink-0" />
+                        <span className="text-muted-foreground w-20 shrink-0">Member ID:</span>
+                        <span className="font-mono font-medium">{selectedNode.id}</span>
+                      </div>
 
-                  <div className="flex items-center gap-2.5">
-                    <GitBranch className="w-4 h-4 text-stone-400 shrink-0" />
-                    <span className="text-muted-foreground w-20 shrink-0">Tree Level:</span>
-                    <span className="font-bold text-stone-700">Level {selectedNode.level}</span>
-                  </div>
+                      <div className="flex items-center gap-2.5">
+                        <GitBranch className="w-4 h-4 text-stone-400 shrink-0" />
+                        <span className="text-muted-foreground w-20 shrink-0">Tree Level:</span>
+                        <span className="font-bold text-stone-700">Level {selectedNode.level}</span>
+                      </div>
 
-                  <div className="flex items-center gap-2.5">
-                    <Phone className="w-4 h-4 text-stone-400 shrink-0" />
-                    <span className="text-muted-foreground w-20 shrink-0">Phone:</span>
-                    <span className="font-medium">{selectedNode.phone}</span>
-                  </div>
+                      <div className="flex items-center gap-2.5">
+                        <Phone className="w-4 h-4 text-stone-400 shrink-0" />
+                        <span className="text-muted-foreground w-20 shrink-0">Phone:</span>
+                        <span className="font-medium">{selectedNode.phone}</span>
+                      </div>
 
-                  <div className="flex items-center gap-2.5">
-                    <Mail className="w-4 h-4 text-stone-400 shrink-0" />
-                    <span className="text-muted-foreground w-20 shrink-0">Email:</span>
-                    <span className="truncate font-medium">{selectedNode.email}</span>
-                  </div>
+                      <div className="flex items-center gap-2.5">
+                        <Mail className="w-4 h-4 text-stone-400 shrink-0" />
+                        <span className="text-muted-foreground w-20 shrink-0">Email:</span>
+                        <span className="truncate font-medium">{selectedNode.email}</span>
+                      </div>
 
-                  <div className="flex items-center gap-2.5">
-                    <Calendar className="w-4 h-4 text-stone-400 shrink-0" />
-                    <span className="text-muted-foreground w-20 shrink-0">Joined On:</span>
-                    <span className="font-medium text-stone-600">{selectedNode.joinDate}</span>
-                  </div>
+                      <div className="flex items-center gap-2.5">
+                        <Calendar className="w-4 h-4 text-stone-400 shrink-0" />
+                        <span className="text-muted-foreground w-20 shrink-0">Joined On:</span>
+                        <span className="font-medium text-stone-600">{selectedNode.joinDate}</span>
+                      </div>
 
-                  {selectedNode.referredBy && (
-                    <div className="flex items-center gap-2.5">
-                      <User className="w-4 h-4 text-stone-400 shrink-0" />
-                      <span className="text-muted-foreground w-20 shrink-0">Referred By:</span>
-                      <span className="font-medium text-stone-700">{selectedNode.referredBy}</span>
+                      {selectedNode.referredBy && (
+                        <div className="flex items-center gap-2.5">
+                          <User className="w-4 h-4 text-stone-400 shrink-0" />
+                          <span className="text-muted-foreground w-20 shrink-0">Referred By:</span>
+                          <span className="font-medium text-stone-700">{selectedNode.referredBy}</span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  </>
+                )}
 
-                <hr className="border-stone-100" />
+                {selectedNode.id !== activeRoot.id && (
+                  <>
+                    <hr className="border-stone-100" />
 
-                {/* Investment Stats */}
-                <div className="bg-[#fcfaf7] border border-stone-200/60 rounded-2xl p-4 space-y-3">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-muted-foreground flex items-center gap-1.5">
-                      <Wallet className="w-3.5 h-3.5 text-stone-500" /> Cow Investment
-                    </span>
-                    <span className={`px-2 py-0.5 rounded-full font-bold uppercase text-[9px] tracking-wide ${
-                      selectedNode.status === 'active' 
-                      ? 'bg-emerald-100 text-emerald-800' 
-                      : 'bg-amber-100 text-amber-800'
-                    }`}>{selectedNode.status}</span>
-                  </div>
+                    {/* Investment Stats */}
+                    <div className="bg-[#fcfaf7] border border-stone-200/60 rounded-2xl p-4 space-y-3">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-muted-foreground flex items-center gap-1.5">
+                          <Wallet className="w-3.5 h-3.5 text-stone-500" /> Cow Investment
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full font-bold uppercase text-[9px] tracking-wide ${
+                          selectedNode.status === 'active' 
+                          ? 'bg-emerald-100 text-emerald-800' 
+                          : 'bg-amber-100 text-amber-800'
+                        }`}>{selectedNode.status}</span>
+                      </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <span className="text-[10px] text-muted-foreground uppercase font-semibold">Total Invested</span>
-                      <p className="text-base font-bold text-stone-800 font-display mt-0.5">{selectedNode.totalInvested}</p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <span className="text-[10px] text-muted-foreground uppercase font-semibold">Total Invested</span>
+                          <p className="text-base font-bold text-stone-800 font-display mt-0.5">{selectedNode.totalInvested}</p>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-muted-foreground uppercase font-semibold">Assoc. Yield</span>
+                          <p className="text-base font-bold text-primary font-display mt-0.5">{selectedNode.monthlyPayout}</p>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-stone-200/50 flex justify-between items-center text-xs">
+                        <span className="text-muted-foreground">Direct Referrals:</span>
+                        <span className="font-semibold text-stone-800 flex items-center gap-1">
+                          <Users className="w-3.5 h-3.5 text-stone-500" /> {selectedNode.totalReferrals} members
+                        </span>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-[10px] text-muted-foreground uppercase font-semibold">Assoc. Yield</span>
-                      <p className="text-base font-bold text-primary font-display mt-0.5">{selectedNode.monthlyPayout}</p>
-                    </div>
-                  </div>
 
-                  <div className="pt-2 border-t border-stone-200/50 flex justify-between items-center text-xs">
-                    <span className="text-muted-foreground">Direct Referrals:</span>
-                    <span className="font-semibold text-stone-800 flex items-center gap-1">
-                      <Users className="w-3.5 h-3.5 text-stone-500" /> {selectedNode.totalReferrals} members
-                    </span>
-                  </div>
-                </div>
-
-                {selectedNode.status === 'pending' && (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-[#7f4e1c]">
-                    This account is in pending state. Direct monthly ROI will begin to yield as soon as their initial Cow Backed wealth slot is activated.
-                  </div>
+                    {selectedNode.status === 'pending' && (
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-[#7f4e1c]">
+                        This account is in pending state. Direct monthly ROI will begin to yield as soon as their initial Cow Backed wealth slot is activated.
+                      </div>
+                    )}
+                  </>
                 )}
               </motion.div>
             </AnimatePresence>
@@ -619,6 +613,20 @@ function FlowTreeView({
 
   // Set of collapsed node IDs representing nodes that hide their babies
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const zoomFactor = -e.deltaY * 0.001;
+      setScale(prev => Math.min(Math.max(prev + zoomFactor, 0.4), 2.0));
+    };
+
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, []);
 
   // Toggle single node expand/collapse
   const toggleNodeCollapse = (id: string) => {
@@ -1004,38 +1012,44 @@ function FlowTreeView({
                 </span>
               </div>
               <h4 className="font-bold text-sm text-white mt-1 leading-tight">{hoveredNode.name}</h4>
-              <p className="text-[10px] text-cream/70">{hoveredNode.role}</p>
+              {hoveredNode.id !== rootNode.id && (
+                <p className="text-[10px] text-cream/70">{hoveredNode.role}</p>
+              )}
             </div>
 
-            <div className="grid grid-cols-2 gap-2 text-[10px] border-t border-cream/10 pt-2 text-cream/90 font-medium">
-              <div>
-                <span className="text-cream/55 block">MEMBER ID</span>
-                <span className="font-mono">{hoveredNode.id}</span>
+            {hoveredNode.id !== rootNode.id && (
+              <div className="grid grid-cols-2 gap-2 text-[10px] border-t border-cream/10 pt-2 text-cream/90 font-medium">
+                <div>
+                  <span className="text-cream/55 block">MEMBER ID</span>
+                  <span className="font-mono">{hoveredNode.id}</span>
+                </div>
+                <div>
+                  <span className="text-cream/55 block">TREE LEVEL</span>
+                  <span>Level {hoveredNode.level}</span>
+                </div>
+                <div className="col-span-2 pt-1">
+                  <span className="text-cream/55 block">MOBILE NUMBER</span>
+                  <span>{hoveredNode.phone}</span>
+                </div>
+                <div className="col-span-2 pt-1">
+                  <span className="text-cream/55 block">EMAIL ADDRESS</span>
+                  <span className="truncate block">{hoveredNode.email}</span>
+                </div>
               </div>
-              <div>
-                <span className="text-cream/55 block">TREE LEVEL</span>
-                <span>Level {hoveredNode.level}</span>
-              </div>
-              <div className="col-span-2 pt-1">
-                <span className="text-cream/55 block">MOBILE NUMBER</span>
-                <span>{hoveredNode.phone}</span>
-              </div>
-              <div className="col-span-2 pt-1">
-                <span className="text-cream/55 block">EMAIL ADDRESS</span>
-                <span className="truncate block">{hoveredNode.email}</span>
-              </div>
-            </div>
+            )}
 
-            <div className="bg-cream/10 rounded-xl p-2.5 text-[10px] flex items-center justify-between">
-              <div>
-                <span className="text-cream/60 uppercase text-[8px] tracking-wider block font-bold">Invested In Cows</span>
-                <span className="text-gold font-bold">{hoveredNode.totalInvested}</span>
+            {hoveredNode.id !== rootNode.id && (
+              <div className="bg-cream/10 rounded-xl p-2.5 text-[10px] flex items-center justify-between">
+                <div>
+                  <span className="text-cream/60 uppercase text-[8px] tracking-wider block font-bold">Invested In Cows</span>
+                  <span className="text-gold font-bold">{hoveredNode.totalInvested}</span>
+                </div>
+                <div>
+                  <span className="text-cream/60 uppercase text-[8px] tracking-wider block font-bold">Monthly Yield</span>
+                  <span className="text-white font-bold">{hoveredNode.monthlyPayout}</span>
+                </div>
               </div>
-              <div>
-                <span className="text-cream/60 uppercase text-[8px] tracking-wider block font-bold">Monthly Yield</span>
-                <span className="text-white font-bold">{hoveredNode.monthlyPayout}</span>
-              </div>
-            </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -1049,15 +1063,21 @@ function FlowTreeView({
 function NetworkGrid({ 
   rootNode, 
   onSelect,
-  searchQuery = ''
+  searchQuery = '',
+  excludeRoot = false
 }: { 
   rootNode: NetworkNode; 
   onSelect: (node: NetworkNode) => void;
   searchQuery?: string;
+  excludeRoot?: boolean;
 }) {
   // Convert full hierarchy object into horizontal grid layout levels
   const flattenNodes = (node: NetworkNode, result: NetworkNode[] = []): NetworkNode[] => {
-    result.push(node);
+    // Only push if not root, or if root exclusion is not desired
+    if (!excludeRoot || node.id !== rootNode.id) {
+      result.push(node);
+    }
+    
     if (node.children) {
       node.children.forEach(child => flattenNodes(child, result));
     }
@@ -1113,20 +1133,24 @@ function NetworkGrid({
             </div>
             <div>
               <h4 className="font-bold text-sm text-bark mb-0.5 group-hover:text-stone-900">{node.name}</h4>
-              <div className="text-[10px] text-muted-foreground font-mono">{node.id} · Level {node.level}</div>
+              {node.id !== rootNode.id && (
+                <div className="text-[10px] text-muted-foreground font-mono">{node.id} · Level {node.level}</div>
+              )}
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-stone-200/50 text-[11px]">
-            <div>
-              <span className="text-muted-foreground block text-[9px] uppercase">Plan status</span>
-              <span className={`font-semibold capitalize ${node.status === 'active' ? 'text-emerald-700' : 'text-amber-700'}`}>{node.status}</span>
+          {node.id !== rootNode.id && (
+            <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-stone-200/50 text-[11px]">
+              <div>
+                <span className="text-muted-foreground block text-[9px] uppercase">Plan status</span>
+                <span className={`font-semibold capitalize ${node.status === 'active' ? 'text-emerald-700' : 'text-amber-700'}`}>{node.status}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground block text-[9px] uppercase">Cow Slots</span>
+                <span className="font-semibold text-stone-700">{node.totalInvested}</span>
+              </div>
             </div>
-            <div>
-              <span className="text-muted-foreground block text-[9px] uppercase">Cow Slots</span>
-              <span className="font-semibold text-stone-700">{node.totalInvested}</span>
-            </div>
-          </div>
+          )}
         </div>
       );
       })}
@@ -1137,13 +1161,26 @@ function NetworkGrid({
 function NetworkList({ 
   rootNode, 
   onSelect,
-  searchQuery = ''
+  searchQuery = '',
+  excludeRoot = false
 }: { 
   rootNode: NetworkNode; 
   onSelect: (node: NetworkNode) => void;
   searchQuery?: string;
+  excludeRoot?: boolean;
 }) {
   const query = searchQuery.trim().toLowerCase();
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+
+  const toggleCollapse = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setCollapsedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // Helper to check if node or any of its children matches the filter
   const matchesOrHasMatchingDescendant = (node: NetworkNode): boolean => {
@@ -1161,8 +1198,13 @@ function NetworkList({
     if (query && !matchesOrHasMatchingDescendant(node)) {
       return result;
     }
-    result.push({ node, depth });
-    if (node.children) {
+    
+    // Only push if not root, or if root exclusion is not desired
+    if (!excludeRoot || node.id !== rootNode.id) {
+      result.push({ node, depth });
+    }
+    
+    if (node.children && node.children.length > 0 && !collapsedIds.has(node.id)) {
       node.children.forEach(child => flattenNodes(child, depth + 1, result));
     }
     return result;
@@ -1170,7 +1212,7 @@ function NetworkList({
 
   const flattenedList = useMemo(() => {
     return flattenNodes(rootNode, 0);
-  }, [rootNode, query]);
+  }, [rootNode, query, collapsedIds]);
 
   if (flattenedList.length === 0) {
     return (
@@ -1182,67 +1224,130 @@ function NetworkList({
   }
 
   return (
-    <div className="space-y-1 py-1 font-sans border border-stone-150 rounded-2xl bg-white overflow-hidden">
-      <div className="px-4 py-2 bg-stone-50 border-b border-stone-200 text-stone-500 font-mono text-[10px] tracking-wider uppercase font-semibold flex justify-between">
-        <span>Hierarchy Tree Nodes (Indented Level Representation)</span>
-        <span>Investment / Status</span>
+    <div className="bg-white border border-stone-200/80 rounded-3xl shadow-sm overflow-hidden font-sans flex flex-col h-full">
+      {/* Table Header */}
+      <div className="hidden lg:grid grid-cols-12 gap-4 px-6 py-4 bg-stone-50 border-b border-stone-200 text-[10px] font-bold text-stone-500 uppercase tracking-widest sticky top-0 z-20">
+        <div className="col-span-8 md:col-span-6 pl-2 flex items-center gap-2">
+          <Users className="w-4 h-4 text-stone-400" /> Network Member
+        </div>
+        <div className="col-span-4 md:col-span-2 flex items-center">Level</div>
+        <div className="md:col-span-2 hidden md:flex items-center justify-end">Investment</div>
+        <div className="col-span-4 md:col-span-2 flex items-center justify-end">Status</div>
       </div>
-      <div className="divide-y divide-stone-100/60 p-2">
+      
+      {/* Table Body */}
+      <div className="overflow-y-auto divide-y divide-stone-100/60 pb-2">
         {flattenedList.map(({ node, depth }) => {
           const isMatched = query ? (node.name.toLowerCase().includes(query) || node.id.toLowerCase().includes(query)) : false;
+          const hasChildren = node.children && node.children.length > 0;
+          const isCollapsed = collapsedIds.has(node.id);
 
           return (
-            <div key={node.id}>
+            <div 
+              key={node.id}
+              onClick={() => onSelect(node)}
+              className={`grid grid-cols-1 lg:grid-cols-12 gap-4 px-6 py-3.5 items-center transition-all duration-200 cursor-pointer hover:bg-stone-50/80 ${
+                isMatched ? 'bg-amber-50/30 relative' : ''
+              }`}
+            >
+              {isMatched && <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#7f4e1c]"></div>}
+              
+              {/* Member Col */}
               <div 
-                onClick={() => onSelect(node)}
-                className={`flex items-center justify-between py-3 px-4 rounded-xl hover:bg-stone-50/80 active:bg-stone-100/50 transition-colors cursor-pointer border ${
-                  isMatched
-                  ? 'bg-amber-50/80 border-[#7f4e1c]/40 shadow-sm font-semibold'
-                  : 'border-transparent hover:border-stone-100'
-                }`}
-                style={{ paddingLeft: `${Math.max(16, depth * 28)}px` }}
+                className="lg:col-span-6 flex items-center gap-3 relative" 
+                style={{ paddingLeft: `${depth * 28}px` }}
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  {/* Visual Indent Line Connector */}
-                  {depth > 0 && (
-                    <div className="flex items-center gap-1 text-stone-300">
-                      <span>└─</span>
-                    </div>
+                {/* Visual Branch Line for Depth */}
+                {depth > 0 && (
+                  <div 
+                    className="absolute border-l-2 border-stone-200 border-b-2 rounded-bl-xl pointer-events-none" 
+                    style={{ 
+                      left: `${(depth - 1) * 28 + 11}px`, 
+                      top: '-20px', 
+                      bottom: '50%', 
+                      width: '20px' 
+                    }}
+                  />
+                )}
+
+                {/* Collage button / avatar spacer */}
+                <div className="flex items-center justify-center w-6 h-6 shrink-0 z-10 relative">
+                  {hasChildren ? (
+                    <button 
+                      onClick={(e) => toggleCollapse(e, node.id)}
+                      className={`w-6 h-6 flex items-center justify-center rounded-full transition-all duration-200 pointer-events-auto border shadow-sm ${
+                        isCollapsed 
+                        ? 'bg-white border-stone-200 text-stone-600 hover:bg-stone-50 hover:border-stone-300' 
+                        : 'bg-[#7f4e1c] border-[#7f4e1c] text-white shadow-[#7f4e1c]/20 hover:bg-[#6c4217]'
+                      }`}
+                    >
+                      {isCollapsed ? <ChevronRight className="w-3.5 h-3.5 ml-0.5" /> : <ChevronDown className="w-3.5 h-3.5 mt-0.5" />}
+                    </button>
+                  ) : (
+                    <div className="w-1.5 h-1.5 rounded-full bg-stone-300" />
                   )}
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                    isMatched
-                    ? 'bg-amber-150 text-[#7f4e1c] border border-[#7f4e1c]/30 shadow-inner'
-                    : node.isCurrentUser 
-                    ? 'bg-primary/20 text-[#7f4e1c]' 
-                    : node.status === 'active' 
-                    ? 'bg-emerald-50 text-emerald-700' 
-                    : 'bg-amber-50 text-amber-700'
-                  }`}>
-                    {node.name.charAt(0)}
-                  </div>
-                  <div className="min-w-0 font-sans">
-                    <div className="font-bold text-sm text-bark truncate flex items-center gap-1.5">
-                      {node.name}
-                      {node.isCurrentUser && <span className="bg-primary/20 text-primary text-[8px] px-1.5 py-0.2 rounded-full font-extrabold uppercase">YOU</span>}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground font-mono">ID: {node.id} · Level {node.level}</div>
-                  </div>
                 </div>
 
-                <div className="flex items-center gap-4 shrink-0 text-right text-xs font-sans">
-                  <div className="hidden sm:block">
-                    <span className="text-[9px] text-stone-400 block uppercase font-medium">Invested</span>
-                    <span className="font-bold text-stone-700">{node.totalInvested}</span>
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 border z-10 ${
+                  isMatched
+                  ? 'bg-amber-100 text-[#7f4e1c] border-[#7f4e1c]/30 shadow-sm'
+                  : node.isCurrentUser 
+                  ? 'bg-primary/20 text-[#7f4e1c] border-primary/30 shadow-sm' 
+                  : node.status === 'active' 
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                  : 'bg-amber-50 text-amber-700 border-amber-100'
+                }`}>
+                  {node.name.charAt(0)}
+                </div>
+                
+                <div className="min-w-0 flex flex-col justify-center">
+                  <div className="font-bold text-sm text-stone-800 truncate flex items-center gap-1.5 leading-tight">
+                    {node.name}
+                    {node.isCurrentUser && <span className="bg-[#7f4e1c] text-white text-[8px] px-1.5 py-0.5 rounded uppercase font-extrabold tracking-wider">YOU</span>}
                   </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                  {node.id !== rootNode.id && (
+                    <div className="text-[10px] text-stone-500 font-mono mt-0.5">ID: {node.id}</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Level Col */}
+              <div className="lg:col-span-2 text-stone-600 text-sm font-medium pl-14 lg:pl-0 flex items-center gap-2">
+                {node.id !== rootNode.id && (
+                  <>
+                    <span className="lg:hidden text-[10px] uppercase font-bold text-stone-400">Level:</span>
+                    Level {node.level}
+                  </>
+                )}
+              </div>
+
+              {/* Investment Col */}
+              <div className="lg:col-span-2 hidden md:flex items-center justify-end text-stone-800 font-bold text-sm">
+                {node.id !== rootNode.id ? node.totalInvested : <span className="text-stone-300">-</span>}
+              </div>
+
+              {/* Status Col */}
+              <div className="lg:col-span-2 flex justify-end pl-14 lg:pl-0">
+                {node.id === rootNode.id ? (
+                  <span className="text-[11px] text-stone-400 font-bold uppercase tracking-wider bg-stone-100 px-2 py-1 rounded-md">Root Node</span>
+                ) : (
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border shadow-sm ${
                     node.status === 'active' 
-                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
-                    : 'bg-amber-50 text-amber-700 border border-amber-100'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200/60' 
+                    : 'bg-amber-50 text-amber-700 border-amber-200/60'
                   }`}>
                     {node.status}
                   </span>
-                </div>
+                )}
               </div>
+              
+              {/* Mobile Only Investment */}
+              {node.id !== rootNode.id && (
+                <div className="md:hidden col-span-1 pl-14 mt-1 flex items-center text-xs">
+                   <span className="text-[10px] uppercase font-bold text-stone-400 mr-2">Investment:</span>
+                   <span className="font-bold text-stone-800">{node.totalInvested}</span>
+                </div>
+              )}
             </div>
           );
         })}
