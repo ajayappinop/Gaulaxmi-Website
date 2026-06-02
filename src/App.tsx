@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import logo from "./assets/gaulaxmi-logo.png";
-import heroCow from "./assets/hero-cow.png";
-import products from "./assets/images/cow_products_studio_1779970801272.png";
-import farm from "./assets/farm.jpg";
-import btxToken from "./assets/images/btx_token_logo_1779969091643.png";
-import tradingIncomeImg from "./assets/images/trading_income_chart_1779969516816.png";
-import realEstateImg from "./assets/images/real_estate_luxury_1779969905480.png";
-import gheeJarImg from "./assets/images/ghee_jar_1779972795361.png";
-import milkBottleImg from "./assets/images/milk_bottle_1779972816200.png";
-import incenseSticksImg from "./assets/images/incense_sticks_1779972836448.png";
-import cowProductsPackImg from "./assets/images/cow_products_pack_1779970125307.png";
+import { useAuth } from "./lib/auth";
+import { Dashboard } from "./components/Dashboard";
+import { AuthForm } from "./components/AuthForm";
+import logo from "./assets/Images/gaulaxmi-logo.png";
+import heroCow from "./assets/Images/hero-cow.png";
+import products from "./assets/Images/cow_products_studio_1779970801272.png";
+import farm from "./assets/Images/farm.jpg";
+import btxToken from "./assets/Images/btx_token_logo_1779969091643.png";
+import tradingIncomeImg from "./assets/Images/trading_income_chart_1779969516816.png";
+import realEstateImg from "./assets/Images/real_estate_luxury_1779969905480.png";
+import gheeJarImg from "./assets/Images/ghee_jar_1779972795361.png";
+import milkBottleImg from "./assets/Images/milk_bottle_1779972816200.png";
+import incenseSticksImg from "./assets/Images/incense_sticks_1779972836448.png";
+import cowProductsPackImg from "./assets/Images/cow_products_pack_1779970125307.png";
 import {
   Milk,
   Coins,
@@ -44,7 +47,13 @@ import {
   ChevronDown,
   FileDown,
   Menu,
-  X
+  X,
+  User,
+  Wallet,
+  CheckCircle,
+  Clock,
+  ShieldCheck,
+  LogOut
 } from "lucide-react";
 
 const containerClass = "max-w-7xl mx-auto px-4 sm:px-6";
@@ -67,8 +76,10 @@ const navLinks = [
   { href: "#join-form", label: "Contact" },
 ];
 
-function Nav() {
+function Nav({ onDashboardOpen }: { onDashboardOpen: (tab: string) => void }) {
+  const { isLoggedIn, user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
 
   useEffect(() => {
     document.body.style.overflow = menuOpen ? "hidden" : "";
@@ -96,10 +107,10 @@ function Nav() {
   return (
     <header className="fixed top-0 inset-x-0 z-[100]">
       <div className="backdrop-blur-md bg-background/95 border-b border-border/50">
-        <div className={`${containerClass} h-14 sm:h-16 flex items-center justify-between gap-3`}>
+        <div className={`${containerClass} py-3 sm:py-4 flex items-center justify-between gap-3`}>
           <a href="#top" className="flex items-center gap-2 min-w-0 relative z-10" onClick={handleNavClick("#top")}>
-            <img src={logo} alt="Gaulaxmi" className="h-9 w-9 sm:h-10 sm:w-10 object-contain shrink-0" referrerPolicy="no-referrer" />
-            <div className="leading-tight min-w-0">
+            <img src={logo} alt="Gaulaxmi" className="h-9 w-9 sm:h-10 sm:w-10 object-contain shrink-0"  />
+            <div className="leading-none min-w-0 flex flex-col justify-center gap-1">
               <div className="font-display text-base sm:text-lg text-primary font-bold truncate">Gaulaxmi</div>
               <div className="text-[9px] sm:text-[10px] tracking-[0.2em] sm:tracking-[0.25em] text-muted-foreground uppercase truncate">Global Wellness</div>
             </div>
@@ -110,9 +121,35 @@ function Nav() {
             ))}
           </nav>
           <div className="flex items-center gap-2 sm:gap-3 shrink-0 relative z-10">
-            <a href="#contact" className="hidden sm:inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium hover:bg-accent transition-all shadow-soft hover:scale-105">
-              Invest Now <ArrowRight className="w-4 h-4" />
-            </a>
+            <div className="flex items-center gap-2">
+              {isLoggedIn && (
+                <a href="#contact" className="hidden sm:inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium hover:bg-accent transition-all shadow-soft hover:scale-105">
+                  Invest Now <ArrowRight className="w-4 h-4" />
+                </a>
+              )}
+              {isLoggedIn ? (
+                <div className="relative">
+                  <button onClick={() => setProfileDropdownOpen(!profileDropdownOpen)} className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-2 rounded-full cursor-pointer hover:bg-primary/20 transition-all">
+                      <User className="w-5 h-5"/>
+                      <span className="text-sm font-semibold max-w-[100px] truncate hidden sm:inline">{user?.name}</span>
+                  </button>
+                  {profileDropdownOpen && (
+                      <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-border rounded-xl shadow-lg flex flex-col py-2 z-[150]">
+                        <button className="text-left px-4 py-2 hover:bg-secondary/50 text-sm flex items-center gap-2" onClick={() => { setProfileDropdownOpen(false); onDashboardOpen('overview'); }}><Wallet className="w-4 h-4"/> Dashboard</button>
+                        <button className="text-left px-4 py-2 hover:bg-secondary/50 text-sm flex items-center gap-2" onClick={() => { setProfileDropdownOpen(false); onDashboardOpen('investments'); }}><CheckCircle className="w-4 h-4"/> Investment Plans</button>
+                        <button className="text-left px-4 py-2 hover:bg-secondary/50 text-sm flex items-center gap-2" onClick={() => { setProfileDropdownOpen(false); onDashboardOpen('transactions'); }}><Clock className="w-4 h-4"/> Transaction History</button>
+                        <button className="text-left px-4 py-2 hover:bg-secondary/50 text-sm flex items-center gap-2" onClick={() => { setProfileDropdownOpen(false); onDashboardOpen('kyc'); }}><ShieldCheck className="w-4 h-4"/> KYC Details</button>
+                        <hr className="my-1 border-border/50"/>
+                        <button className="text-left px-4 py-2 hover:bg-red-50 text-red-600 text-sm flex items-center gap-2" onClick={() => { setProfileDropdownOpen(false); logout(); }}><LogOut className="w-4 h-4"/> Sign Out</button>
+                      </div>
+                  )}
+                </div>
+              ) : (
+                <a href="#contact" className="hidden sm:inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium hover:bg-accent transition-all shadow-soft hover:scale-105">
+                  Invest Now <ArrowRight className="w-4 h-4" />
+                </a>
+              )}
+            </div>
             <button
               type="button"
               className="lg:hidden w-10 h-10 rounded-full border border-border flex items-center justify-center text-primary bg-card/80 cursor-pointer"
@@ -146,13 +183,15 @@ function Nav() {
                   {l.label}
                 </a>
               ))}
-              <a
-                href="#contact"
-                onClick={handleNavClick("#contact")}
-                className="relative z-10 mt-2 inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-5 py-3 rounded-full text-sm font-semibold cursor-pointer touch-manipulation"
-              >
-                Invest Now <ArrowRight className="w-4 h-4" />
-              </a>
+              {!isLoggedIn && (
+                <a
+                  href="#contact"
+                  onClick={handleNavClick("#contact")}
+                  className="relative z-10 mt-2 inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-5 py-3 rounded-full text-sm font-semibold cursor-pointer touch-manipulation"
+                >
+                  Invest Now <ArrowRight className="w-4 h-4" />
+                </a>
+              )}
             </nav>
           </motion.div>
         )}
@@ -167,7 +206,7 @@ interface FlyingParticle {
   x: number;
 }
 
-function Hero() {
+function Hero({ isLoggedIn }: { isLoggedIn: boolean }) {
   return (
     <section id="top" className="relative min-h-screen flex items-center overflow-hidden isolate bg-[#1c120c]">
       {/* Background image with slow Ken Burns zoom shifted to the right */}
@@ -178,7 +217,7 @@ function Hero() {
           width={1920}
           height={1080}
           className="w-full h-full object-cover object-right sm:object-[85%_center] animate-zoom-slow opacity-90 scale-x-[-1]"
-          referrerPolicy="no-referrer"
+          
         />
         {/* Layered gradient overlays for legibility + warmth - fading completely to transparent on the right */}
         <div className="absolute inset-0 bg-gradient-to-r from-bark via-bark/90 md:via-bark/60 to-transparent" />
@@ -192,7 +231,8 @@ function Hero() {
 
       {/* Main Container styled for full-screen hero text presentation with high-contrast placement */}
       <div className={`relative ${containerClass} py-20 sm:py-24 lg:py-28 w-full`}>
-        <div className="max-w-3xl text-cream flex flex-col justify-center">
+        <div className="grid lg:grid-cols-2 gap-12 lg:gap-8 items-center">
+          <div className="max-w-3xl text-cream flex flex-col justify-center">
           
           {/* Elegant Welcome Badge */}
           <motion.div 
@@ -210,13 +250,16 @@ function Hero() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.15 }}
-            className="font-display text-[2rem] min-[480px]:text-4xl sm:text-5xl lg:text-[72px] text-balance leading-[1.08] sm:leading-[1.05] font-bold"
+            className="font-display text-[2rem] min-[480px]:text-4xl sm:text-5xl lg:text-[72px] leading-[1.08] sm:leading-[1.05] font-bold"
           >
-            Where the{" "}
-            <span className="text-gold bg-gradient-to-r from-gold via-cream to-gold bg-clip-text text-transparent animate-shimmer font-display font-bold">
-              sacred Gir cow
-            </span>{" "}
-            multiplies your wealth.
+            Where the Sacred<br />
+            <span className="whitespace-nowrap">
+              <span className="text-gold bg-gradient-to-r from-gold via-cream to-gold bg-clip-text text-transparent animate-shimmer font-display font-bold">
+                Gir Cow
+              </span>{" "}
+              multiplies
+            </span><br />
+            your wealth.
           </motion.h1>
 
           {/* Sub-text paragraph with fluid delay animate */}
@@ -289,6 +332,23 @@ function Hero() {
               </div>
             ))}
           </motion.div>
+        </div>
+        <div className="w-full mt-16 lg:mt-0 flex justify-center lg:justify-end">
+           {!isLoggedIn ? <AuthForm /> : (
+             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-8 lg:p-10 shadow-2xl text-center max-w-sm w-full mx-auto lg:mx-0">
+                <div className="w-16 h-16 bg-gradient-gold rounded-full flex items-center justify-center text-bark mx-auto mb-6 shadow-glow">
+                   <User className="w-8 h-8" />
+                </div>
+                <h3 className="font-display font-bold text-2xl text-cream mb-2">Welcome Back!</h3>
+                <p className="text-cream/70 text-sm mb-6 leading-relaxed">
+                   Access your dashboard from the profile menu in the navigation bar to manage your active plans, review KYC status, and explore new investment tiers.
+                </p>
+                <div className="text-xs uppercase tracking-widest text-gold font-semibold">
+                   Ready to grow your wealth?
+                </div>
+             </motion.div>
+           )}
+        </div>
         </div>
       </div>
 
@@ -399,7 +459,7 @@ function Income() {
             <div key={s.title} className="group relative rounded-3xl border border-border overflow-hidden bg-card shadow-soft hover:shadow-deep transition-all duration-300">
               <div className="relative h-56 overflow-hidden bg-gradient-to-br from-[#6c3d16] via-[#8e5a2c] to-[#c89055]">
                 {s.image ? (
-                  <img src={s.image} alt={s.title} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" referrerPolicy="no-referrer" />
+                  <img src={s.image} alt={s.title} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"  />
                 ) : (
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.2),transparent_45%)]" />
                 )}
@@ -561,7 +621,7 @@ function CowProductsCarousel() {
                   alt={product.title}
                   loading="lazy"
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                  referrerPolicy="no-referrer"
+                  
                 />
                 <span className="absolute top-4 left-4 text-[10px] uppercase font-bold tracking-wider px-3 py-1.5 bg-bark text-cream rounded-full">
                   {product.badge}
@@ -950,7 +1010,7 @@ function Bonus() {
                 alt="Gaulaxmi cow farm at sunrise" 
                 loading="lazy" 
                 className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105" 
-                referrerPolicy="no-referrer" 
+                
               />
               <div className="absolute bottom-4 sm:bottom-5 left-4 sm:left-6 right-4 sm:right-6 z-10 text-left text-white flex flex-col sm:flex-row sm:items-end gap-3 sm:justify-between">
                 <div>
@@ -997,7 +1057,7 @@ function Contact() {
         />
       </div>
       <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center relative">
-        <img src={logo} alt="Gaulaxmi" className="h-16 w-16 sm:h-20 sm:w-20 mx-auto mb-5 sm:mb-6 opacity-90 animate-float bg-[#faf6f0] rounded-[50px] p-2.5" referrerPolicy="no-referrer" />
+        <img src={logo} alt="Gaulaxmi" className="h-16 w-16 sm:h-20 sm:w-20 mx-auto mb-5 sm:mb-6 opacity-90 animate-float bg-[#faf6f0] rounded-[50px] p-2.5"  />
         <h2 className={`${sectionHeadingClass} text-white`}>
           Begin your journey with Gaulaxmi.
         </h2>
@@ -1081,7 +1141,7 @@ function GetInTouch() {
             <div className="relative z-10 flex flex-col items-center">
               {/* Premium Circular Cow Logo */}
               <div className="w-16 h-16 bg-[#faf6f0] rounded-full p-2.5 flex items-center justify-center mb-6 shadow-inner">
-                <img src={logo} alt="Gaulaxmi Logo" className="w-12 h-12 object-contain opacity-95 animate-float" referrerPolicy="no-referrer" />
+                <img src={logo} alt="Gaulaxmi Logo" className="w-12 h-12 object-contain opacity-95 animate-float"  />
               </div>
               
               <h3 className="font-display text-2xl font-bold text-center text-white tracking-tight">
@@ -1312,7 +1372,7 @@ function Footer() {
     <footer className="bg-bark text-cream/80 py-8 sm:py-10">
       <div className={`${containerClass} flex flex-col md:flex-row gap-6 items-center md:justify-between text-center md:text-left`}>
         <div className="flex items-center gap-3 justify-center md:justify-start">
-          <img src={logo} alt="" className="h-9 w-9" referrerPolicy="no-referrer" />
+          <img src={logo} alt="" className="h-9 w-9"  />
           <div>
             <div className="font-display text-cream font-bold">Gaulaxmi Global Wellness</div>
             <div className="text-xs text-cream/60">© {new Date().getFullYear()} · All rights reserved</div>
@@ -1327,22 +1387,48 @@ function Footer() {
 }
 
 export default function App() {
+  const { isLoggedIn } = useAuth();
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const [dashboardTab, setDashboardTab] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const totalScroll = document.documentElement.scrollTop;
+      const windowHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+      const scroll = Number(totalScroll / windowHeight);
+      setScrollProgress(scroll);
+    };
+
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
   return (
     <div className="min-h-screen overflow-x-hidden bg-background text-foreground antialiased selection:bg-[#f2e2c9] selection:text-[#9a5f23]">
-      <Nav />
-      <main className="pt-14 sm:pt-16">
-        <Hero />
-        <About />
-        <WhyChoose />
-        <Income />
-        <CowProductsCarousel />
-        <Plans />
-        <ReturnCalculator />
-        <Bonus />
-        <Contact />
-        <GetInTouch />
-      </main>
-      <Footer />
+      <div className="fixed top-0 left-0 w-full h-1 z-[101]">
+        <div 
+          className="h-full bg-gold"
+          style={{ width: `${scrollProgress * 100}%`, transition: 'width 0.1s ease-out' }}
+        />
+      </div>
+      {!dashboardTab && <Nav onDashboardOpen={setDashboardTab} />}
+      {dashboardTab ? (
+         <Dashboard activeTab={dashboardTab} onTabChange={setDashboardTab} onClose={() => setDashboardTab(null)} />
+      ) : (
+        <main className="pt-14 sm:pt-16">
+          <Hero isLoggedIn={isLoggedIn} />
+          <About />
+          <WhyChoose />
+          <Income />
+          <CowProductsCarousel />
+          <Plans />
+          <ReturnCalculator />
+          <Bonus />
+          <Contact />
+          <GetInTouch />
+        </main>
+      )}
+      {!dashboardTab && <Footer />}
     </div>
   );
 }
