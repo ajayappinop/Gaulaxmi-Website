@@ -7,8 +7,38 @@ import logo from "../assets/Images/gaulaxmi-logo.png";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { QRCodeSVG } from 'qrcode.react';
 import { toast } from 'react-hot-toast';
+import { formatINR, getPlanById, type InvestmentPlan } from '../lib/plans';
+import { useInvestmentPlans } from '../lib/useInvestmentPlans';
+import {
+  isValidEmail,
+  isValidIndianPhone,
+  isValidMoneyAmount,
+  parsePositiveAmount,
+  normalizeIndianPhone,
+  validateDocNumber,
+  isAdult,
+  isValidName,
+} from '../lib/validation';
+import { DASHBOARD_NAV_ITEMS, type DashboardTabId } from '../lib/dashboardNav';
+import type { PendingPlanPurchase } from '../lib/planPurchaseFlow';
+import { KycInvestorCertificate, buildKycCertificateId } from './KycInvestorCertificate';
+import { KycSubmissionHistory } from './KycSubmissionHistory';
 
-type TabView = 'overview' | 'investments' | 'wallet' | 'kyc' | 'transactions' | 'referrals' | 'hierarchy' | 'settings';
+type TabView = DashboardTabId;
+
+const SIDEBAR_TAB_ICONS: Record<DashboardTabId, React.ReactNode> = {
+  overview: <Wallet className="w-4 h-4" />,
+  wallet: <ArrowUpRight className="w-4 h-4" />,
+  investments: <CheckCircle className="w-4 h-4" />,
+  transactions: <Clock className="w-4 h-4" />,
+  referrals: <Users className="w-4 h-4" />,
+  hierarchy: <Network className="w-4 h-4" />,
+  kyc: <ShieldCheck className="w-4 h-4" />,
+  profile: <UserRound className="w-4 h-4" />,
+  settings: <Settings className="w-4 h-4" />,
+};
+
+const MIN_DEPOSIT = 1_000;
 
 const Pagination = ({ 
   currentPage, 
@@ -90,7 +120,24 @@ const Pagination = ({
   );
 };
 
-export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { activeTab?: string, onTabChange?: (tab: string) => void, onClose?: () => void }) {
+export function Dashboard({
+  activeTab: externalTab,
+  onTabChange,
+  onClose,
+  pendingPlanPurchase,
+  onDismissPendingPurchase,
+  onResumePurchase,
+  onStartPlanPurchase,
+}: {
+  activeTab?: DashboardTabId;
+  onTabChange?: (tab: DashboardTabId) => void;
+  onClose?: () => void;
+  pendingPlanPurchase?: PendingPlanPurchase | null;
+  onDismissPendingPurchase?: () => void;
+  onResumePurchase?: () => void;
+  /** Opens the full purchase journey (plan → account → KYC → wallet → confirm) */
+  onStartPlanPurchase?: (planId: string) => void;
+}) {
   const { 
     user, 
     logout, 
@@ -101,12 +148,12 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
     allUsers,
     adminApproveKyc,
     adminRejectKyc,
-    invest, 
     updateProfile, 
     changePassword, 
     deleteAccount, 
     deactivateAccount 
   } = useAuth();
+  const investmentPlans = useInvestmentPlans();
   const [internalTab, setInternalTab] = useState<TabView>('overview');
   const activeTab = (externalTab as TabView) || internalTab;
   
@@ -235,47 +282,149 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
 
   if (!user) return null;
 
-  return (
-    <div className="min-h-screen bg-stone-50 text-stone-900">
-      {/* Top Navbar */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-stone-200 fixed top-0 inset-x-0 z-50 shadow-sm">
-        <div className="w-full px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img src={logo} alt="Gaulaxmi" className="h-8 w-8 object-contain shrink-0"  />
-            <div className="font-display text-lg text-primary font-bold font-sans">Gaulaxmi <span className="font-sans text-xs tracking-widest text-[#7f4e1c] uppercase font-bold">Dashboard</span></div>
+  const kycVerified = user.kycStatus === 'verified' || user.isKycVerified;
+
+  const handleInvestInPlan = (plan: InvestmentPlan) => {
+    if (!onStartPlanPurchase) {
+      toast.error('Purchase flow is unavailable. Please use the Plans section on the home page.');
+      return;
+    }
+    onStartPlanPurchase(plan.id);
+  };
+
+  const handleDeposit = async () => {
+    if (!kycVerified) {
+      toast.error(
+        user.kycStatus === 'submitted'
+          ? 'KYC is under admin review. You can deposit once approved.'
+          : 'Complete KYC and wait for admin approval before depositing.'
+      );
+      setActiveTab('kyc');
+      return;
+    }
+    const amount = parsePositiveAmount(depositAmount);
+    if (amount === null) {
+      toast.error('Enter a valid deposit amount.');
+      return;
+    }
+    if (!isValidMoneyAmount(amount, { min: MIN_DEPOSIT })) {
+      toast.error(`Minimum deposit is ${formatINR(MIN_DEPOSIT)}.`);
+      return;
+    }
+    try {
+      await deposit(amount);
+      setDepositAmount('');
+      toast.success('Deposit successful!');
+    } catch {
+      toast.error('Deposit failed.');
+    }
+  };
+
+  const handleWithdraw = async () => {
+    if (!kycVerified) {
+      toast.error(
+        user.kycStatus === 'submitted'
+          ? 'KYC is under admin review. You can withdraw once approved.'
+          : 'Complete KYC and wait for admin approval before withdrawing.'
+      );
+      setActiveTab('kyc');
+      return;
+    }
+    const amount = parsePositiveAmount(withdrawAmount);
+    if (amount === null) {
+      toast.error('Enter a valid withdrawal amount.');
+      return;
+    }
+    if (!isValidMoneyAmount(amount, { min: 1 })) {
+      toast.error('Enter a valid withdrawal amount.');
+      return;
+    }
+    if (amount > user.balance) {
+      toast.error('Insufficient balance.');
+      return;
+    }
+    try {
+      await withdraw(amount);
+      setWithdrawAmount('');
+      toast.success('Withdrawal request submitted!');
+    } catch {
+      toast.error('Withdrawal failed.');
+    }
+  };
+
+  const renderPlanCards = (gridClass = 'grid sm:grid-cols-2 lg:grid-cols-3 gap-4') => (
+    <div className={gridClass}>
+      {investmentPlans.map((plan) => (
+        <div key={plan.id} className="bg-white rounded-xl p-4 border border-[#d8cec1] shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="font-semibold text-bark">{plan.tier}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">5% monthly · 60 months</div>
+            <div className="font-display font-bold text-lg text-[#7f4e1c] mt-1">{formatINR(plan.amount)}</div>
           </div>
-          
-          <div className="flex items-center gap-4">
-            <div className={`hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-semibold ${
-              user.kycStatus === 'verified' || user.isKycVerified 
-                ? 'bg-green-50 border-green-200 text-green-700' 
-                : user.kycStatus === 'submitted' 
-                ? 'bg-amber-50 border-amber-200 text-amber-700 animate-pulse' 
-                : user.kycStatus === 'rejected'
-                ? 'bg-red-50 border-red-200 text-red-700'
-                : 'bg-red-50 border-red-200 text-red-700'
-            }`}>
-               {user.kycStatus === 'verified' || user.isKycVerified ? (
-                 <ShieldCheck className="w-4 h-4" />
-               ) : user.kycStatus === 'submitted' ? (
-                 <Clock className="w-4 h-4 animate-spin-slow" />
-               ) : (
-                 <ShieldAlert className="w-4 h-4" />
-               )}
-               {user.kycStatus === 'verified' || user.isKycVerified 
-                 ? 'KYC Verified' 
-                 : user.kycStatus === 'submitted' 
-                 ? 'KYC Pending Review' 
-                 : user.kycStatus === 'rejected'
-                 ? 'KYC Rejected'
-                 : 'KYC Required'}
+          <button
+            type="button"
+            onClick={() => handleInvestInPlan(plan)}
+            className="mt-4 w-full bg-[#f8f1e8] text-[#7b4b1d] hover:bg-[#b07843] hover:text-white transition py-2 rounded-lg text-sm font-semibold border border-[#d8cec1] cursor-pointer"
+          >
+            Start purchase journey
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+
+  const pendingPlan = pendingPlanPurchase?.planId
+    ? getPlanById(pendingPlanPurchase.planId)
+    : undefined;
+
+  return (
+    <div className="min-h-screen bg-stone-50 text-stone-900 flex flex-col">
+      {/* Top bar */}
+      <header className="bg-white/90 backdrop-blur-md border-b border-stone-200 fixed top-0 inset-x-0 z-50 shadow-sm">
+        <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <img src={logo} alt="Gaulaxmi" className="h-8 w-8 object-contain shrink-0" />
+            <div className="font-display text-base sm:text-lg text-primary font-bold font-sans truncate">
+              Gaulaxmi
+              <span className="font-sans text-[10px] sm:text-xs tracking-widest text-[#7f4e1c] uppercase font-bold ml-1.5 sm:ml-2">
+                Dashboard
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <div
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full border text-[10px] sm:text-xs font-semibold max-w-[9rem] sm:max-w-none truncate ${
+                kycVerified
+                  ? 'bg-green-50 border-green-200 text-green-700'
+                  : user.kycStatus === 'submitted'
+                  ? 'bg-amber-50 border-amber-200 text-amber-700'
+                  : 'bg-red-50 border-red-200 text-red-700'
+              }`}
+            >
+              {kycVerified ? (
+                <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              ) : user.kycStatus === 'submitted' ? (
+                <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              ) : (
+                <ShieldAlert className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              )}
+              <span className="truncate">
+                {kycVerified
+                  ? 'Verified'
+                  : user.kycStatus === 'submitted'
+                  ? 'KYC Pending'
+                  : user.kycStatus === 'rejected'
+                  ? 'Rejected'
+                  : 'KYC Required'}
+              </span>
             </div>
 
-
             {onClose ? (
-               <button 
+              <button
+                type="button"
                 onClick={onClose}
-                className="flex items-center justify-center w-10 h-10 rounded-full bg-secondary hover:bg-border transition-colors text-bark shadow-sm"
+                className="flex items-center justify-center w-10 h-10 rounded-full bg-stone-100 hover:bg-stone-200 transition-colors text-bark shrink-0"
                 aria-label="Close dashboard"
               >
                 <X className="w-5 h-5" />
@@ -285,50 +434,111 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
         </div>
       </header>
 
-      <div className="min-h-screen flex">
-        
-        {/* Sidebar */}
-        <aside className="fixed top-16 bottom-0 left-0 w-64 border-r border-stone-200 bg-white z-50 p-6 flex flex-col">
-           
-            <div className="flex flex-col items-center text-center pb-6 mb-6 border-b border-stone-100">
-              <div className="w-20 h-20 bg-gradient-to-br from-[#80501f] to-[#593610] text-white rounded-[1.5rem] flex items-center justify-center font-display font-bold text-3xl mb-3 shadow-[0_4px_10px_rgba(127,78,28,0.2)] overflow-hidden">
+      {pendingPlan && (
+        <div className="fixed top-16 left-0 right-0 z-[45] bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-xs sm:text-sm text-amber-950">
+          <div className="max-w-[1600px] mx-auto flex items-center justify-center gap-2 sm:gap-3 flex-wrap text-center pr-8 relative">
+            <span>
+              <span className="font-semibold">Completing purchase:</span> {pendingPlan.tier} ({formatINR(pendingPlan.amount)}) — finish KYC or wallet steps, then{' '}
+              {onResumePurchase ? (
+                <button type="button" onClick={onResumePurchase} className="underline font-bold hover:text-amber-700">
+                  return to checkout
+                </button>
+              ) : (
+                <span className="font-bold">return to checkout</span>
+              )}
+            </span>
+            {onDismissPendingPurchase && (
+              <button
+                type="button"
+                onClick={onDismissPendingPurchase}
+                className="absolute right-0 top-1/2 -translate-y-1/2 p-1 rounded-full text-amber-800/70 hover:bg-amber-100 hover:text-amber-950"
+                aria-label="Cancel purchase"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Mobile section tabs */}
+      <nav
+        className={`lg:hidden fixed left-0 right-0 z-40 h-14 bg-white/95 backdrop-blur-md border-b border-stone-200 ${pendingPlan ? 'top-[7.25rem]' : 'top-16'}`}
+        aria-label="Dashboard sections"
+      >
+        <div className="h-full flex items-center gap-1.5 overflow-x-auto px-3 scrollbar-none">
+          {DASHBOARD_NAV_ITEMS.map((item) => {
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveTab(item.id)}
+                className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                  isActive
+                    ? 'bg-[#7f4e1c] text-white shadow-sm'
+                    : 'text-stone-600 hover:bg-stone-100'
+                }`}
+              >
+                <span className={isActive ? 'text-white' : 'text-[#7f4e1c]'}>{SIDEBAR_TAB_ICONS[item.id]}</span>
+                {item.sidebarLabel}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      <div className={`flex flex-1 w-full min-h-0 ${pendingPlan ? 'pt-24 lg:pt-16' : 'pt-16'}`}>
+        {/* Desktop sidebar */}
+        <aside className="hidden lg:flex flex-col fixed top-16 left-0 bottom-0 w-72 border-r border-stone-200 bg-white z-40">
+          <div className="flex flex-col h-full min-h-0 p-5">
+            <div className="shrink-0 flex flex-col items-center text-center pb-4 mb-4 border-b border-stone-100">
+              <div className="w-16 h-16 bg-gradient-to-br from-[#80501f] to-[#593610] text-white rounded-2xl flex items-center justify-center font-display font-bold text-2xl mb-2.5 shadow-[0_4px_10px_rgba(127,78,28,0.2)] overflow-hidden">
                 {user?.profileImage ? (
-                  <img src={user.profileImage} alt={user?.name || "User"} className="w-full h-full object-cover" />
+                  <img src={user.profileImage} alt={user?.name || 'User'} className="w-full h-full object-cover" />
                 ) : (
-                  user?.name ? user.name.charAt(0).toUpperCase() : 'U'
+                  (user?.name ? user.name.charAt(0).toUpperCase() : 'U')
                 )}
               </div>
-              <h3 className="font-bold text-stone-900 w-full truncate px-2">{user?.name || "User"}</h3>
-              <p className="text-xs text-stone-500 truncate w-full px-2">{user?.email || ""}</p>
+              <h3 className="font-bold text-stone-900 w-full truncate px-1 text-sm">{user?.name || 'User'}</h3>
+              <p className="text-[11px] text-stone-500 truncate w-full px-1 mt-0.5">{user?.email || ''}</p>
+              <p className="text-[11px] font-semibold text-[#7f4e1c] mt-2">{formatINR(user.balance)}</p>
             </div>
-             
-             <nav className="flex flex-col gap-2">
-               <TabButton active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} label="Overview" icon={<Wallet className="w-4 h-4" />} />
-               <TabButton active={activeTab === 'investments'} onClick={() => setActiveTab('investments')} label="My Investments" icon={<CheckCircle className="w-4 h-4" />} />
-               <TabButton active={activeTab === 'wallet'} onClick={() => setActiveTab('wallet')} label="Wallet & Transfers" icon={<ArrowUpRight className="w-4 h-4" />} />
-               <TabButton active={activeTab === 'transactions'} onClick={() => setActiveTab('transactions')} label="Transaction History" icon={<Clock className="w-4 h-4" />} />
-               <TabButton active={activeTab === 'referrals'} onClick={() => setActiveTab('referrals')} label="Refer & Earn" icon={<Users className="w-4 h-4" />} />
-               <TabButton active={activeTab === 'hierarchy'} onClick={() => setActiveTab('hierarchy')} label="My Network" icon={<Network className="w-4 h-4" />} />
-               <TabButton active={activeTab === 'kyc'} onClick={() => setActiveTab('kyc')} label="KYC" icon={<ShieldCheck className="w-4 h-4" />} />
-               <TabButton active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} label="My Profile" icon={<UserRound className="w-4 h-4" />} />
-               <TabButton active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} label="Settings" icon={<Settings className="w-4 h-4" />} />
-             </nav>
-             
-             <button 
-               onClick={logout}
-               className="mt-auto flex items-center gap-2 text-sm font-semibold text-stone-500 hover:text-red-600 transition-colors pt-6 border-t border-stone-100 cursor-pointer"
-             >
-               <LogOut className="w-4 h-4" />
-               Sign Out
-             </button>
-         </aside>
 
-         {/* Main Content */}
-         <main className="flex-1 ml-64 p-8 space-y-6 mt-16">
+            <nav className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col gap-1 pr-0.5 scrollbar-none">
+              {DASHBOARD_NAV_ITEMS.map((item) => (
+                <React.Fragment key={item.id}>
+                  <TabButton
+                    active={activeTab === item.id}
+                    onClick={() => setActiveTab(item.id)}
+                    label={item.sidebarLabel}
+                    icon={SIDEBAR_TAB_ICONS[item.id]}
+                    compact
+                  />
+                </React.Fragment>
+              ))}
+            </nav>
+
+            <button
+              type="button"
+              onClick={logout}
+              className="shrink-0 mt-4 flex items-center justify-center gap-2 w-full text-sm font-semibold text-stone-500 hover:text-red-600 hover:bg-red-50/80 transition-colors pt-4 border-t border-stone-100 cursor-pointer rounded-xl py-2.5"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign Out
+            </button>
+          </div>
+        </aside>
+
+        {/* Main content */}
+        <main className="flex-1 w-full min-w-0 lg:ml-72 mt-14 lg:mt-0 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8 space-y-5 sm:space-y-6 max-w-[1200px] xl:max-w-[1320px] lg:mx-auto">
             
             {activeTab === 'overview' && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-                 <h2 className="font-display font-bold text-2xl">Account Overview</h2>
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 sm:space-y-6">
+                 <header className="space-y-1">
+                   <h2 className="font-display font-bold text-xl sm:text-2xl text-stone-900">Account Overview</h2>
+                   <p className="text-sm text-stone-500">Wallet balance, returns, and quick actions</p>
+                 </header>
                  
                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                    {/* Balance Card */}
@@ -407,37 +617,12 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
                  </div>
 
                  {/* Available Plans on Overview */}
-                 <div className="bg-gradient-warm border border-[#f0e6da] rounded-3xl p-6 shadow-sm mt-8">
-                   <h3 className="font-bold text-xl mb-4 text-[#8b4513]">Available Investment Plans</h3>
-                   <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                     {[
-                         { name: 'Starter Plan', amount: 100000 },
-                         { name: 'Basic Plan', amount: 200000 },
-                         { name: 'Bronze Plan', amount: 300000 },
-                     ].map(plan => (
-                         <div key={plan.name} className="bg-white rounded-xl p-4 border border-[#d8cec1] shadow-sm flex flex-col justify-between">
-                           <div>
-                             <div className="font-semibold text-bark">{plan.name}</div>
-                             <div className="font-display font-bold text-lg text-[#7f4e1c]">₹{plan.amount.toLocaleString('en-IN')}</div>
-                           </div>
-                           <button
-                             onClick={() => {
-                               if (user.balance < plan.amount) {
-                                 toast.error('Insufficient wallet balance. Please deposit funds first.');
-                                 setActiveTab('wallet');
-                               } else {
-                                 invest(plan.name, plan.amount);
-                                 toast.success(`Successfully invested in ${plan.name} for ₹${plan.amount.toLocaleString('en-IN')}!`);
-                               }
-                             }}
-                             className="mt-4 w-full bg-[#f8f1e8] text-[#7b4b1d] hover:bg-[#b07843] hover:text-white transition py-2 rounded-lg text-sm font-semibold border border-[#d8cec1] cursor-pointer"
-                           >
-                             Invest Now
-                           </button>
-                         </div>
-                     ))}
-                   </div>
+                 {kycVerified && (
+                 <div className="bg-gradient-warm border border-[#f0e6da] rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-sm">
+                   <h3 className="font-bold text-lg sm:text-xl mb-4 text-[#8b4513]">Available Investment Plans</h3>
+                   {renderPlanCards('grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4')}
                  </div>
+                 )}
 
                  {/* Notifications */}
                  {!(user.kycStatus === 'verified' || user.isKycVerified) && (
@@ -454,8 +639,11 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
             )}
 
             {activeTab === 'wallet' && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-                 <h2 className="font-display font-bold text-2xl">Wallet & Transfers</h2>
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 sm:space-y-6">
+                 <header className="space-y-1">
+                   <h2 className="font-display font-bold text-xl sm:text-2xl text-stone-900">Wallet & Transfers</h2>
+                   <p className="text-sm text-stone-500">Deposit funds or request withdrawals</p>
+                 </header>
                  <div className="bg-white border border-border rounded-3xl p-6 shadow-sm">
                     <p className="text-sm text-muted-foreground mb-1 font-sans">Current Balance</p>
                     <p className="text-3xl font-display font-bold text-bark">₹{user.balance.toLocaleString('en-IN')}</p>
@@ -471,38 +659,48 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
                  <div className="grid md:grid-cols-2 gap-6">
                     <div className="bg-white border border-[#eae0d5]/85 rounded-3xl p-6 shadow-sm space-y-4">
                       <h3 className="font-bold text-lg flex items-center gap-2"><ArrowDownRight className="w-5 h-5 text-green-600" /> Deposit Funds</h3>
-                      <div className="space-y-2">
-                        <label className="text-xs font-semibold uppercase text-muted-foreground font-sans block">Amount (INR)</label>
-                        <input 
-                          type="number" 
-                          value={depositAmount} 
-                          onChange={e => setDepositAmount(e.target.value)} 
-                          className="w-full bg-secondary/30 border border-border rounded-xl px-4 py-3 outline-none focus:border-primary/50" 
-                          placeholder="e.g. 100000"
-                        />
-                      </div>
-                      <button
-                        onClick={() => {
-                          if(depositAmount && !isNaN(Number(depositAmount))) {
-                            deposit(Number(depositAmount));
-                            setDepositAmount('');
-                            toast.success('Deposit successful!');
-                          }
-                        }}
-                        className="w-full bg-[#7f4e1c] text-white hover:bg-[#633a11] font-semibold py-3 rounded-xl transition cursor-pointer"
-                      >
-                        Confirm Deposit
-                      </button>
-                    </div>
-                    
-                    <div className="bg-white border border-[#eae0d5]/85 rounded-3xl p-6 shadow-sm space-y-4">
-                      <h3 className="font-bold text-lg flex items-center gap-2"><ArrowUpRight className="w-5 h-5 text-bark" /> Withdraw Funds</h3>
-                      {user.kycStatus === 'verified' || user.isKycVerified ? (
+                      {kycVerified ? (
                         <>
                           <div className="space-y-2">
                             <label className="text-xs font-semibold uppercase text-muted-foreground font-sans block">Amount (INR)</label>
                             <input 
                               type="number" 
+                              min={MIN_DEPOSIT}
+                              step={1000}
+                              value={depositAmount} 
+                              onChange={e => setDepositAmount(e.target.value)} 
+                              className="w-full bg-secondary/30 border border-border rounded-xl px-4 py-3 outline-none focus:border-primary/50" 
+                              placeholder={`Min ${formatINR(MIN_DEPOSIT)}`}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleDeposit}
+                            className="w-full bg-[#7f4e1c] text-white hover:bg-[#633a11] font-semibold py-3 rounded-xl transition cursor-pointer"
+                          >
+                            Confirm Deposit
+                          </button>
+                        </>
+                      ) : (
+                        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-sm font-sans">
+                          {user.kycStatus === 'submitted'
+                            ? 'Deposits are disabled while your KYC is under admin review.'
+                            : 'Deposits are disabled until KYC is submitted and approved by an admin.'}
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="bg-white border border-[#eae0d5]/85 rounded-3xl p-6 shadow-sm space-y-4">
+                      <h3 className="font-bold text-lg flex items-center gap-2"><ArrowUpRight className="w-5 h-5 text-bark" /> Withdraw Funds</h3>
+                      {kycVerified ? (
+                        <>
+                          <div className="space-y-2">
+                            <label className="text-xs font-semibold uppercase text-muted-foreground font-sans block">Amount (INR)</label>
+                            <input 
+                              type="number" 
+                              min={1}
+                              max={user.balance}
+                              step={1}
                               value={withdrawAmount} 
                               onChange={e => setWithdrawAmount(e.target.value)} 
                               className="w-full bg-secondary/30 border border-border rounded-xl px-4 py-3 outline-none focus:border-primary/50" 
@@ -510,17 +708,8 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
                             />
                           </div>
                           <button
-                            onClick={() => {
-                              if(withdrawAmount && !isNaN(Number(withdrawAmount))) {
-                                if (Number(withdrawAmount) > user.balance) {
-                                   toast.error('Insufficient balance');
-                                } else {
-                                   withdraw(Number(withdrawAmount));
-                                   setWithdrawAmount('');
-                                   toast.success('Withdrawal request submitted!');
-                                }
-                              }
-                            }}
+                            type="button"
+                            onClick={handleWithdraw}
                             className="w-full bg-bark text-white font-semibold py-3 rounded-xl transition hover:opacity-90 cursor-pointer"
                           >
                             Request Withdrawal
@@ -528,7 +717,9 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
                         </>
                       ) : (
                         <div className="p-4 bg-red-50 border border-red-200 text-red-800 rounded-xl text-sm font-sans">
-                          Withdrawals are disabled because KYC verification is pending. Please verify your identity first.
+                          {user.kycStatus === 'submitted'
+                            ? 'Withdrawals are disabled while your KYC is under admin review.'
+                            : 'Withdrawals are disabled until KYC is submitted and approved by an admin.'}
                         </div>
                       )}
                     </div>
@@ -537,9 +728,11 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
             )}
 
             {activeTab === 'investments' && (
-               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-                 <h2 className="font-display font-bold text-2xl">My Investments</h2>
-                  {user.kycStatus === 'verified' || user.isKycVerified ? (
+               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 sm:space-y-6">
+                 <header className="space-y-1">
+                   <h2 className="font-display font-bold text-xl sm:text-2xl text-stone-900">My Investments</h2>
+                   <p className="text-sm text-stone-500">Active plans and new tier options</p>
+                 </header>
                    <div className="space-y-6 font-sans">
                       {(!user.investments || user.investments.length === 0) ? (
                          <div className="bg-white border border-border border-dashed rounded-3xl p-10 flex flex-col items-center justify-center text-center shadow-sm">
@@ -572,49 +765,27 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
                       </div>
                       )}
 
-                      <div className="bg-gradient-warm border border-[#eae0d5]/85 rounded-3xl p-6 shadow-sm mt-8">
-                        <h3 className="font-bold text-xl mb-4 text-[#8b4513]">Available Investment Plans</h3>
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                           {[
-                              { name: 'Starter Plan', amount: 100000 },
-                              { name: 'Basic Plan', amount: 200000 },
-                              { name: 'Bronze Plan', amount: 300000 },
-                           ].map(plan => (
-                              <div key={plan.name} className="bg-white rounded-xl p-4 border border-[#d8cec1] shadow-sm flex flex-col justify-between">
-                                 <div>
-                                   <div className="font-semibold text-bark">{plan.name}</div>
-                                   <div className="font-display font-bold text-lg text-[#7f4e1c]">₹{plan.amount.toLocaleString('en-IN')}</div>
-                                 </div>
-                                 <button
-                                   onClick={() => {
-                                     if (user.balance < plan.amount) {
-                                       toast.error('Insufficient wallet balance. Please deposit funds first.');
-                                       setActiveTab('wallet');
-                                     } else {
-                                       invest(plan.name, plan.amount);
-                                       toast.success(`Successfully invested in ${plan.name} for ₹${plan.amount.toLocaleString('en-IN')}!`);
-                                     }
-                                   }}
-                                   className="mt-4 w-full bg-[#f8f1e8] text-[#7b4b1d] hover:bg-[#b07843] hover:text-white transition py-2 rounded-lg text-sm font-semibold border border-[#d8cec1] cursor-pointer"
-                                 >
-                                   Invest Now
-                                 </button>
-                              </div>
-                           ))}
-                        </div>
+                      <div className="bg-gradient-warm border border-[#eae0d5]/85 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-sm">
+                        <h3 className="font-bold text-lg sm:text-xl mb-4 text-[#8b4513]">Available Investment Plans</h3>
+                        {!kycVerified && (
+                          <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+                            {user.kycStatus === 'submitted'
+                              ? 'KYC is under review. You can still start the purchase journey; investment completes after approval and wallet funding.'
+                              : 'Complete each step in the purchase journey (including KYC) before your investment is confirmed.'}
+                          </p>
+                        )}
+                        {renderPlanCards('grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4')}
                       </div>
                    </div>
-                 ) : (
-                   <div className="p-5 bg-orange-50 border border-orange-200 text-orange-800 rounded-xl font-sans">
-                     You need to complete KYC verification before making any investments.
-                   </div>
-                 )}
                </motion.div>
             )}
 
             {activeTab === 'transactions' && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-                 <h2 className="font-display font-bold text-2xl">Transaction History</h2>
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 sm:space-y-6">
+                 <header className="space-y-1">
+                   <h2 className="font-display font-bold text-xl sm:text-2xl text-stone-900">Transaction History</h2>
+                   <p className="text-sm text-stone-500">Deposits, withdrawals, and investments</p>
+                 </header>
                  <div className="bg-white border border-border rounded-3xl p-6 shadow-sm overflow-hidden font-sans">
                     {(!user.transactions || user.transactions.length === 0) ? (
                        <div className="text-center py-8 text-muted-foreground font-sans">
@@ -681,13 +852,13 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
             )}
 
             {activeTab === 'referrals' && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-                <div>
-                  <h2 className="font-display font-bold text-2xl mb-1">Refer & Earn Rewards</h2>
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 sm:space-y-6">
+                <header className="space-y-1">
+                  <h2 className="font-display font-bold text-xl sm:text-2xl text-stone-900">Refer & Earn Rewards</h2>
                   <p className="text-sm text-balance text-muted-foreground font-sans">
                     Invite friends to join Gaulaxmi and earn high yielding referral bonuses upon their successful subscription activation.
                   </p>
-                </div>
+                </header>
 
                 {/* Referral Link & Social Sharing Block */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 font-sans">
@@ -920,11 +1091,11 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
             )}
 
             {activeTab === 'kyc' && (
-              <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 max-w-4xl">
+              <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 sm:space-y-6 w-full max-w-4xl">
                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                    <div>
-                     <h2 className="font-display font-bold text-2xl text-stone-900 tracking-tight flex items-center gap-2">
-                       <ShieldCheck className="w-7 h-7 text-[#7f4e1c] shrink-0" /> Secure Identity Verification (KYC)
+                     <h2 className="font-display font-bold text-xl sm:text-2xl text-stone-900 tracking-tight flex items-center gap-2 flex-wrap">
+                       <ShieldCheck className="w-6 h-6 sm:w-7 sm:h-7 text-[#7f4e1c] shrink-0" /> Secure Identity Verification (KYC)
                      </h2>
                      <p className="text-sm text-stone-500 font-sans mt-0.5">Official regulatory identification verify engine for GauLaxmi cattle pools</p>
                    </div>
@@ -937,67 +1108,43 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
                     {/* Top Accent Strip */}
                     <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-500 via-amber-700 to-[#7f4e1c]"></div>
 
-                    {user.kycStatus === 'verified' || user.isKycVerified ? (
-                       <div className="py-6 font-sans">
-                          {/* Elegantly Polished Credentials / Investor Certificate card */}
-                          <div className="max-w-xl mx-auto bg-gradient-to-br from-stone-50 to-stone-100/40 border-2 border-[#7f4e1c]/15 rounded-3xl p-6 sm:p-8 relative shadow-lg overflow-hidden">
-                             {/* Background Watermark Pattern */}
-                             <div className="absolute right-0 bottom-0 opacity-5 pointer-events-none -mr-10 -mb-10 text-[#7f4e1c]">
-                                <ShieldCheck className="w-64 h-64" />
-                             </div>
-                             
-                             <div className="flex justify-between items-start gap-4 border-b border-stone-200 pb-5 mb-5">
-                                <div className="space-y-1">
-                                   <div className="text-[9px] font-mono tracking-widest text-[#7f4e1c] uppercase font-bold bg-amber-50 border border-amber-200/50 px-2.5 py-0.5 rounded-full inline-block">
-                                      PASSED VERIFICATION
-                                   </div>
-                                   <h3 className="font-bold text-lg text-stone-850 mt-1">GauLaxmi Investor Certificate</h3>
-                                   <p className="text-[11px] text-stone-550">Automated KYC regulatory compliance verification passed.</p>
-                                </div>
-                                <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center border border-emerald-200 shrink-0 shadow-inner">
-                                   <ShieldCheck className="w-8 h-8" />
-                                </div>
-                             </div>
+                    {user.kycStatus === 'verified' ||
+                    user.isKycVerified ||
+                    user.kycStatus === 'submitted' ? (
+                      <KycInvestorCertificate
+                        accountName={user.kycDetails?.fullName || user.name}
+                        certificateId={
+                          user.kycVerificationNumber ||
+                          buildKycCertificateId(user.id, user.kycDetails?.phone || user.phone)
+                        }
+                        status={
+                          user.kycStatus === 'verified' || user.isKycVerified
+                            ? 'approved'
+                            : 'pending'
+                        }
+                        issuedAt={user.kycDetails?.submittedAt || new Date().toISOString()}
+                      />
+                    ) : user.kycStatus === 'rejected' ? (
+                      <div className="space-y-4">
+                        <KycInvestorCertificate
+                          accountName={user.kycDetails?.fullName || user.name}
+                          certificateId={
+                            user.kycVerificationNumber ||
+                            buildKycCertificateId(user.id, user.kycDetails?.phone || user.phone)
+                          }
+                          status="rejected"
+                          issuedAt={user.kycDetails?.submittedAt || new Date().toISOString()}
+                          rejectionReason={user.kycRejectionReason}
+                        />
+                        <p className="text-sm text-center text-stone-600">
+                          Update your details below and submit again.
+                        </p>
+                      </div>
+                    ) : null}
 
-                             <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
-                                <div>
-                                   <span className="text-[10px] uppercase text-stone-400 font-semibold block tracking-wider font-mono">VERIFIED ACCOUNT NAME</span>
-                                   <span className="font-display font-bold text-stone-800 text-sm uppercase">{user.name}</span>
-                                </div>
-                                <div>
-                                   <span className="text-[10px] uppercase text-stone-400 font-semibold block tracking-wider font-mono">SECURITY CERTIFICATE ID</span>
-                                   <span className="font-mono font-bold text-stone-800 text-sm">GLX-KYC-{(user.id || '0000').slice(0, 5).toUpperCase()}-{(user.phone || '0000').slice(-4)}</span>
-                                </div>
-                                <div>
-                                   <span className="text-[10px] uppercase text-stone-400 font-semibold block tracking-wider font-mono">KYC STATUS</span>
-                                   <span className="inline-flex items-center gap-1 text-xs text-emerald-700 font-bold">
-                                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> APPROVED
-                                   </span>
-                                </div>
-                                <div>
-                                   <span className="text-[10px] uppercase text-stone-400 font-semibold block tracking-wider font-mono">ISSUED TIMESTAMP</span>
-                                   <span className="font-mono text-xs text-stone-600 font-medium">{new Date().toLocaleString()}</span>
-                                </div>
-                             </div>
-
-                             <div className="border-t border-dashed border-stone-300 mt-6 pt-5 flex items-center justify-between gap-4">
-                                <div className="text-[10px] text-stone-400 leading-relaxed font-sans max-w-xs">
-                                   Compliance check status: ACTIVE. Deposits, passive pool earnings, and transaction networks are fully authorized.
-                                </div>
-                                <div className="text-right shrink-0">
-                                   <span className="text-[9px] font-mono uppercase text-stone-400 font-medium block">Digital Stamp</span>
-                                   <span className="font-serif italic text-sm font-semibold text-[#7f4e1c]">GauLaxmi Sec.</span>
-                                </div>
-                             </div>
-                          </div>
-                          
-                          <div className="mt-8 text-center">
-                             <p className="text-xs text-stone-500 font-sans">
-                               Tired of updating information? Contact our helpdesk at <span className="font-semibold text-[#7f4e1c] underline">support@gaulaxmi.com</span> to request document changes.
-                             </p>
-                          </div>
-                       </div>
-                    ) : (
+                    {user.kycStatus !== 'verified' &&
+                    !user.isKycVerified &&
+                    user.kycStatus !== 'submitted' && (
                        <div className="space-y-6 font-sans">
                           {/* Step Progress Bar */}
                           <div className="relative pb-6 border-b border-stone-150">
@@ -1101,10 +1248,23 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    if (!kycForm.fullName.trim() || !kycForm.dob || !kycForm.gender || !kycForm.phone.trim()) {
-                                      toast.error("Please fill in all personal details first");
+                                    if (!isValidName(kycForm.fullName)) {
+                                      toast.error('Enter your full legal name (at least 2 letters).');
                                       return;
                                     }
+                                    if (!kycForm.dob || !isAdult(kycForm.dob)) {
+                                      toast.error('Enter a valid date of birth (you must be 18 or older).');
+                                      return;
+                                    }
+                                    if (!kycForm.gender) {
+                                      toast.error('Please select your gender.');
+                                      return;
+                                    }
+                                    if (!isValidIndianPhone(kycForm.phone)) {
+                                      toast.error('Enter a valid 10-digit Indian mobile number.');
+                                      return;
+                                    }
+                                    setKycForm({ ...kycForm, phone: normalizeIndianPhone(kycForm.phone) });
                                     setKycStep(2);
                                   }}
                                   className="bg-[#7f4e1c] text-white hover:bg-[#633a13] font-semibold px-6 py-2.5 rounded-xl transition duration-150 flex items-center gap-1 cursor-pointer text-sm shadow-sm"
@@ -1266,8 +1426,18 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    if (!kycForm.docNumber.trim() || !kycForm.docFileName) {
-                                      toast.error("Please provide document number and upload file copy");
+                                    if (!validateDocNumber(kycForm.docType, kycForm.docNumber)) {
+                                      const hint =
+                                        kycForm.docType === 'PAN'
+                                          ? 'PAN format: ABCDE1234F'
+                                          : kycForm.docType === 'Aadhaar'
+                                          ? 'Aadhaar: 12 digits'
+                                          : 'Passport: A1234567';
+                                      toast.error(`Invalid ${kycForm.docType} number. ${hint}`);
+                                      return;
+                                    }
+                                    if (!kycForm.docFileName) {
+                                      toast.error('Please upload a copy of your identity document.');
                                       return;
                                     }
                                     setKycStep(3);
@@ -1452,28 +1622,42 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
                                   type="button"
                                   onClick={() => {
                                     if (!kycForm.signatureName.trim()) {
-                                      toast.error("Please sign the declaration by typing your name");
+                                      toast.error('Please sign the declaration by typing your name.');
+                                      return;
+                                    }
+                                    if (
+                                      kycForm.signatureName.trim().toLowerCase() !==
+                                      kycForm.fullName.trim().toLowerCase()
+                                    ) {
+                                      toast.error('Signature must match your full legal name exactly.');
                                       return;
                                     }
                                     if (!kycForm.declared) {
-                                      toast.error("Please check the terms and conditions checkbox to submit");
+                                      toast.error('Please accept the declaration checkbox to submit.');
                                       return;
                                     }
-                                    submitKyc({
-                                      fullName: kycForm.fullName,
-                                      dob: kycForm.dob,
-                                      gender: kycForm.gender,
-                                      phone: kycForm.phone,
-                                      docType: kycForm.docType,
-                                      docNumber: kycForm.docNumber,
-                                      docFileName: kycForm.docFileName || `${kycForm.docType.toLowerCase()}_file.jpg`,
-                                      address: kycForm.address,
-                                      city: kycForm.city,
-                                      state: kycForm.state,
-                                      pincode: kycForm.pincode,
-                                      submittedAt: new Date().toISOString()
-                                    });
-                                    toast.success('KYC Details submitted! Pending review from administrative panel.');
+                                    void (async () => {
+                                      try {
+                                        await submitKyc({
+                                          fullName: kycForm.fullName,
+                                          dob: kycForm.dob,
+                                          gender: kycForm.gender,
+                                          phone: kycForm.phone,
+                                          docType: kycForm.docType,
+                                          docNumber: kycForm.docNumber,
+                                          docFileName: kycForm.docFileName || `${kycForm.docType.toLowerCase()}_file.jpg`,
+                                          address: kycForm.address,
+                                          city: kycForm.city,
+                                          state: kycForm.state,
+                                          pincode: kycForm.pincode,
+                                          submittedAt: new Date().toISOString(),
+                                        });
+                                        setKycStep(1);
+                                        toast.success('KYC submitted! An admin will review and approve your application.');
+                                      } catch {
+                                        toast.error('KYC submission failed.');
+                                      }
+                                    })();
                                   }}
                                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-6 py-2.5 rounded-xl transition duration-150 flex items-center gap-1.5 cursor-pointer text-sm shadow-md hover:scale-[1.02]"
                                 >
@@ -1486,25 +1670,26 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
                           <div className="border border-stone-150 bg-stone-50/50 rounded-2xl p-4 flex items-start gap-3 mt-4">
                             <Info className="w-4.5 h-4.5 bg-stone-200 text-stone-600 p-0.5 rounded-full shrink-0 mt-0.5" />
                             <p className="text-[11px] leading-relaxed text-stone-500 font-sans">
-                              Cow registry systems demand strict identity parameters to verify active multi-stream bank payouts. Sandbox test approvals take 1 second.
+                              Cow registry systems require strict identity verification. After you submit, an admin must approve your KYC before you can deposit, withdraw, or invest.
                             </p>
                           </div>
                        </div>
                     )}
                  </div>
+                 <KycSubmissionHistory />
               </motion.div>
             )}
 
             {activeTab === 'profile' && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 max-w-4xl font-sans">
-                <div>
-                  <h2 className="font-display font-bold text-2xl text-stone-900">My Profile</h2>
-                  <p className="text-sm text-muted-foreground font-sans mt-1">View and manage your comprehensive identity, network lineage, and account details.</p>
-                </div>
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 sm:space-y-6 w-full max-w-5xl font-sans">
+                <header className="space-y-1">
+                  <h2 className="font-display font-bold text-xl sm:text-2xl text-stone-900">My Profile</h2>
+                  <p className="text-sm text-muted-foreground font-sans">View and manage your identity and account details.</p>
+                </header>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
                   {/* Left Column - Navigation Anchors */}
-                  <div className="md:col-span-1 space-y-3 bg-white border border-stone-200 rounded-3xl p-5 shadow-sm h-fit sticky top-6">
+                  <div className="md:col-span-1 space-y-3 bg-white border border-stone-200 rounded-3xl p-5 shadow-sm h-fit md:sticky md:top-24">
                     <div className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-2">Profile Sections</div>
                     <a href="#personal-details" className="flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-stone-700 hover:bg-stone-50 rounded-xl transition duration-150">
                       <UserRound className="w-4 h-4 text-[#7f4e1c]" /> Personal Details
@@ -1591,12 +1776,25 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
                       <div className="pt-3">
                         <button
                           onClick={() => {
-                            if (!profileName.trim() || !profileEmail.trim()) {
-                              toast.error("Name and Email cannot be blank");
+                            if (!isValidName(profileName)) {
+                              toast.error('Enter a valid full name (at least 2 letters).');
                               return;
                             }
-                            updateProfile(profileName, profileEmail, profilePhone, profileImage);
-                            toast.success("Profile details saved successfully!");
+                            if (!isValidEmail(profileEmail)) {
+                              toast.error('Enter a valid email address.');
+                              return;
+                            }
+                            if (profilePhone.trim() && !isValidIndianPhone(profilePhone)) {
+                              toast.error('Enter a valid 10-digit Indian mobile number or leave phone empty.');
+                              return;
+                            }
+                            updateProfile(
+                              profileName.trim(),
+                              profileEmail.trim().toLowerCase(),
+                              profilePhone.trim() ? normalizeIndianPhone(profilePhone) : '',
+                              profileImage
+                            );
+                            toast.success('Profile details saved successfully!');
                           }}
                           className="px-5 py-2.5 bg-[#7f4e1c] text-white hover:bg-[#6c4116] rounded-xl font-semibold text-xs transition-colors shadow-sm"
                         >
@@ -1648,13 +1846,13 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
             )}
 
             {activeTab === 'settings' && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 max-w-4xl font-sans">
-                <div>
-                  <h2 className="font-display font-bold text-2xl text-stone-900">Account Settings</h2>
-                  <p className="text-sm text-muted-foreground font-sans mt-1">Update password and configure credential preference parameters.</p>
-                </div>
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 sm:space-y-6 w-full max-w-5xl font-sans">
+                <header className="space-y-1">
+                  <h2 className="font-display font-bold text-xl sm:text-2xl text-stone-900">Account Settings</h2>
+                  <p className="text-sm text-muted-foreground font-sans">Update password and account preferences.</p>
+                </header>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
                   {/* Left Column - Navigation Anchors */}
                   <div className="md:col-span-1 space-y-3 bg-white border border-stone-200 rounded-3xl p-5 shadow-sm h-fit">
                     <div className="text-[10px] text-stone-400 font-bold uppercase tracking-wider block mb-2">Settings Sections</div>
@@ -1784,7 +1982,11 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
               </motion.div>
             )}
 
-            {activeTab === 'hierarchy' && <HierarchyTab />}
+            {activeTab === 'hierarchy' && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="w-full min-w-0">
+                <HierarchyTab />
+              </motion.div>
+            )}
          </main>
       </div>
 
@@ -1848,14 +2050,32 @@ export function Dashboard({ activeTab: externalTab, onTabChange, onClose }: { ac
   );
 }
 
-function TabButton({ active, onClick, label, icon, extraBadge }: { active: boolean, onClick: () => void, label: string, icon: React.ReactNode, extraBadge?: string }) {
+function TabButton({
+  active,
+  onClick,
+  label,
+  icon,
+  extraBadge,
+  compact = false,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  icon: React.ReactNode;
+  extraBadge?: string;
+  compact?: boolean;
+}) {
   return (
-    <button 
-      onClick={onClick} 
-      className={`flex items-center justify-between px-4 py-3 text-sm font-semibold rounded-xl transition-colors shrink-0 cursor-pointer text-left w-full ${active ? 'bg-[#7f4e1c] text-white ' : 'text-bark/70 hover:bg-secondary/60'}`}
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center justify-between rounded-xl transition-colors shrink-0 cursor-pointer text-left w-full ${
+        compact ? 'px-3 py-2.5 text-[13px]' : 'px-4 py-3 text-sm'
+      } font-semibold ${active ? 'bg-[#7f4e1c] text-white' : 'text-bark/70 hover:bg-stone-100'}`}
     >
-      <div className="flex items-center gap-2.5">
-        {icon} <span>{label}</span>
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="shrink-0">{icon}</span>
+        <span className="truncate">{label}</span>
       </div>
       {extraBadge && (
         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${active ? "bg-[#543310] text-[#f2e2c9]" : "bg-emerald-50 text-emerald-800 border border-emerald-250 animate-pulse"}`}>

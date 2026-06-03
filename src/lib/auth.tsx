@@ -1,16 +1,24 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { isAdminUser } from './admin';
+import { isValidPassword, normalizeEmail } from './validation';
+import type { UserRole } from './admin';
+import { api, ApiError, getToken, setToken } from './apiClient';
+import { consumeAuthHandoffFromUrl } from './appBridge';
+
+export type AuthResult = { ok: true; user: User } | { ok: false; message: string };
 
 export interface Transaction {
   id: string;
   type: 'deposit' | 'withdrawal' | 'investment';
   amount: number;
   date: string;
-  status: 'completed' | 'pending';
+  status: 'completed' | 'pending' | 'rejected';
   details?: string;
 }
 
 export interface Investment {
   id: string;
+  planId?: string;
   planName: string;
   amount: number;
   date: string;
@@ -47,404 +55,318 @@ export interface User {
   isKycVerified: boolean;
   kycStatus?: 'not_started' | 'submitted' | 'verified' | 'rejected';
   kycVerificationNumber?: string;
+  kycRejectionReason?: string;
   kycDetails?: KycDetails;
+  kycHistory?: import('../../shared/types').KycHistoryEntry[];
   investments: Investment[];
   transactions: Transaction[];
   referrals: Referral[];
   referralLink: string;
   phone?: string;
-  password?: string;
   isDeactivated?: boolean;
   profileImage?: string;
+  role?: UserRole;
+  milestoneFulfillment?: Record<string, 'eligible' | 'fulfilled'>;
 }
 
 interface AuthContextType {
   user: User | null;
   isLoggedIn: boolean;
+  loading: boolean;
   allUsers: User[];
-  login: (email: string, pass: string) => void;
-  register: (name: string, email: string, pass: string) => void;
+  login: (email: string, pass: string) => Promise<AuthResult>;
+  register: (name: string, email: string, pass: string) => Promise<AuthResult>;
   logout: () => void;
-  deposit: (amount: number) => void;
-  withdraw: (amount: number) => void;
+  deposit: (amount: number) => Promise<void>;
+  withdraw: (amount: number) => Promise<void>;
   verifyKyc: () => void;
-  submitKyc: (details: KycDetails) => void;
-  adminApproveKyc: (userId: string) => void;
-  adminRejectKyc: (userId: string) => void;
-  invest: (planName: string, amount: number) => void;
-  updateProfile: (name: string, email: string, phone: string, profileImage?: string) => void;
-  changePassword: (newPass: string) => void;
-  deleteAccount: () => void;
-  deactivateAccount: () => void;
+  submitKyc: (details: KycDetails) => Promise<void>;
+  isAdmin: boolean;
+  adminApproveKyc: (userId: string) => Promise<void>;
+  adminRejectKyc: (userId: string, reason: string) => Promise<void>;
+  adminApproveKycSubmission: (submissionId: string) => Promise<void>;
+  adminRejectKycSubmission: (submissionId: string, reason: string) => Promise<void>;
+  adminAdjustBalance: (userId: string, amount: number, note: string) => Promise<void>;
+  adminApproveWithdrawal: (userId: string, txId: string) => Promise<void>;
+  adminRejectWithdrawal: (userId: string, txId: string) => Promise<void>;
+  adminSetDeactivated: (userId: string, deactivated: boolean) => Promise<void>;
+  adminRemoveUser: (userId: string) => Promise<void>;
+  adminAssignInvestment: (userId: string, planId: string) => Promise<AuthResult>;
+  adminSetMilestoneFulfillment: (
+    userId: string,
+    milestoneId: string,
+    status: 'eligible' | 'fulfilled' | null
+  ) => Promise<void>;
+  refreshUsers: () => Promise<void>;
+  invest: (planName: string, amount: number, planId?: string) => Promise<void>;
+  updateProfile: (name: string, email: string, phone: string, profileImage?: string) => Promise<void>;
+  changePassword: (newPass: string) => Promise<void>;
+  deleteAccount: () => Promise<void>;
+  deactivateAccount: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const ADMIN_SESSION_KEY = 'gaulaxmi_admin_session';
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const savedUserStr = localStorage.getItem('gaulaxmi_user');
-    const savedAccountsStr = localStorage.getItem('gaulaxmi_accounts');
-    
-    let loadedAccounts: User[] = [];
-    if (savedAccountsStr) {
-      try {
-        loadedAccounts = JSON.parse(savedAccountsStr);
-      } catch (e) {
-        loadedAccounts = [];
-      }
-    }
-    
-    let activeUser: User | null = null;
-    if (savedUserStr) {
-      try {
-        activeUser = JSON.parse(savedUserStr);
-      } catch (e) {
-        activeUser = null;
-      }
-    }
-    
-    if (loadedAccounts.length === 0) {
-      loadedAccounts = [
-        {
-          id: 'admin_test_1',
-          name: 'Ajay Appinop',
-          email: 'ajay@appinop.com',
-          balance: 247000,
-          walletAddress: '0x3c5b98df78faef67b7890ef9a3f9eef68f0003ca',
-          isKycVerified: false,
-          kycStatus: 'submitted',
-          kycVerificationNumber: 'KYC-591840-GLX',
-          kycDetails: {
-            fullName: 'Ajay Appinop',
-            dob: '1995-04-12',
-            gender: 'Male',
-            phone: '9876543210',
-            docType: 'PAN',
-            docNumber: 'ABCDE1234F',
-            docFileName: 'pan_national_document.jpg',
-            address: 'Malviya Nagar, 12 SFS Flat',
-            city: 'Jaipur',
-            state: 'Rajasthan',
-            pincode: '302017',
-            submittedAt: new Date(Date.now() - 3600000 * 4).toISOString()
-          },
-          investments: [],
-          transactions: [],
-          referrals: [],
-          referralLink: 'https://gaulaxmi.com/ref/ajayapp'
-        },
-        {
-          id: 'demo_user_2',
-          name: 'Vikram Singh',
-          email: 'vikram@gaulaxmi.io',
-          balance: 15400,
-          walletAddress: '0x9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b',
-          isKycVerified: true,
-          kycStatus: 'verified',
-          kycVerificationNumber: 'KYC-204193-GLX',
-          kycDetails: {
-            fullName: 'Vikram Singh',
-            dob: '1988-11-22',
-            gender: 'Male',
-            phone: '9922881100',
-            docType: 'Aadhaar',
-            docNumber: '4820 1938 5819',
-            docFileName: 'aadhaar_scan.pdf',
-            address: 'Sector 5, Mansarovar',
-            city: 'Jaipur',
-            state: 'Rajasthan',
-            pincode: '302020',
-            submittedAt: new Date(Date.now() - 3600000 * 48).toISOString()
-          },
-          investments: [],
-          transactions: [],
-          referrals: [],
-          referralLink: 'https://gaulaxmi.com/ref/vikram'
-        },
-        {
-          id: 'demo_user_3',
-          name: 'Preeti Sharma',
-          email: 'preeti@gaulaxmi.io',
-          balance: 8500,
-          walletAddress: '0x5b3f81e39a3f2d019ab7c3f9eef68f44d9302ca1',
-          isKycVerified: false,
-          kycStatus: 'submitted',
-          kycVerificationNumber: 'KYC-881024-GLX',
-          kycDetails: {
-            fullName: 'Preeti Sharma',
-            dob: '1997-08-15',
-            gender: 'Female',
-            phone: '9001122334',
-            docType: 'Passport',
-            docNumber: 'Z8941029',
-            docFileName: 'passport_biodata.png',
-            address: 'Malviya Nagar, Sector 4',
-            city: 'Jaipur',
-            state: 'Rajasthan',
-            pincode: '302017',
-            submittedAt: new Date(Date.now() - 3600000 * 1).toISOString()
-          },
-          investments: [],
-          transactions: [],
-          referrals: [],
-          referralLink: 'https://gaulaxmi.com/ref/preeti'
-        }
-      ];
-    }
-    
-    // Ensure active user is present in stored accounts
-    if (activeUser && !loadedAccounts.some(u => u.id === activeUser!.id)) {
-      loadedAccounts.push(activeUser);
-    }
-    
-    setAllUsers(loadedAccounts);
-    localStorage.setItem('gaulaxmi_accounts', JSON.stringify(loadedAccounts));
-    
-    if (activeUser) {
-      const refreshedActive = loadedAccounts.find(u => u.id === activeUser!.id);
-      if (refreshedActive) {
-        setUser(refreshedActive);
-        localStorage.setItem('gaulaxmi_user', JSON.stringify(refreshedActive));
-      } else {
-        setUser(activeUser);
-      }
-    }
+  const loadAdminUsers = useCallback(async () => {
+    const users = await api.getAdminUsers();
+    setAllUsers(users);
   }, []);
 
-  const saveUserStates = (updatedUser: User | null, updatedAllUsers?: User[]) => {
-    if (updatedUser) {
-      setUser(updatedUser);
-      localStorage.setItem('gaulaxmi_user', JSON.stringify(updatedUser));
-      
-      const list = updatedAllUsers || [...allUsers];
-      const idx = list.findIndex(u => u.id === updatedUser.id);
-      if (idx > -1) {
-        list[idx] = updatedUser;
+  const applySession = useCallback(
+    async (nextUser: User) => {
+      setUser(nextUser);
+      if (isAdminUser(nextUser)) {
+        localStorage.setItem(ADMIN_SESSION_KEY, '1');
+        await loadAdminUsers();
       } else {
-        list.push(updatedUser);
+        localStorage.removeItem(ADMIN_SESSION_KEY);
+        setAllUsers([]);
       }
-      setAllUsers(list);
-      localStorage.setItem('gaulaxmi_accounts', JSON.stringify(list));
-    } else {
-      setUser(null);
-      localStorage.removeItem('gaulaxmi_user');
-      if (updatedAllUsers) {
-        setAllUsers(updatedAllUsers);
-        localStorage.setItem('gaulaxmi_accounts', JSON.stringify(updatedAllUsers));
+    },
+    [loadAdminUsers]
+  );
+
+  useEffect(() => {
+    (async () => {
+      consumeAuthHandoffFromUrl();
+      if (!getToken()) {
+        setLoading(false);
+        return;
       }
+      try {
+        const me = await api.me();
+        await applySession(me);
+      } catch {
+        setToken(null);
+        setUser(null);
+        setAllUsers([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [applySession]);
+
+  const syncUserInList = (updated: User) => {
+    setUser(updated);
+    setAllUsers((prev) => {
+      const idx = prev.findIndex((u) => u.id === updated.id);
+      if (idx === -1) return prev;
+      const next = [...prev];
+      next[idx] = updated;
+      return next;
+    });
+  };
+
+  const login = async (email: string, pass: string): Promise<AuthResult> => {
+    if (!isValidPassword(pass)) {
+      return { ok: false, message: 'Password must be at least 6 characters.' };
+    }
+    try {
+      const { token, user: loggedIn } = await api.login(email, pass);
+      setToken(token);
+      await applySession(loggedIn);
+      return { ok: true, user: loggedIn };
+    } catch (e) {
+      return { ok: false, message: e instanceof ApiError ? e.message : 'Login failed' };
     }
   };
 
-  const login = (email: string, pass: string) => {
-    const savedAccountsStr = localStorage.getItem('gaulaxmi_accounts');
-    let list: User[] = savedAccountsStr ? JSON.parse(savedAccountsStr) : [...allUsers];
-    
-    // Check if user has referrals
-    const existing = list.find(u => u.email === email);
-    if (existing) {
-      if (!existing.referrals) {
-        existing.referrals = [
-          { id: '1', friendName: 'Rahul Kumar', status: 'active', bonusEarned: 5000 },
-          { id: '2', friendName: 'Priya Singh', status: 'pending', bonusEarned: 0 }
-        ];
-        existing.referralLink = `https://gaulaxmi.com/ref/${existing.id}`;
-      }
-      if (!existing.password) {
-        existing.password = pass || '123456';
-      }
-      setUser(existing);
-      localStorage.setItem('gaulaxmi_user', JSON.stringify(existing));
-      return;
+  const register = async (name: string, email: string, pass: string): Promise<AuthResult> => {
+    if (!isValidPassword(pass)) {
+      return { ok: false, message: 'Password must be at least 6 characters.' };
     }
-    
-    const newUser: User = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: email.split('@')[0],
-      email,
-      balance: 0,
-      walletAddress: '0x' + Array.from({length: 40}, () => Math.floor(Math.random()*16).toString(16)).join(''),
-      isKycVerified: false,
-      kycStatus: 'not_started',
-      investments: [],
-      transactions: [],
-      referrals: [
-        { id: '1', friendName: 'Rahul Kumar', status: 'active', bonusEarned: 5000 },
-        { id: '2', friendName: 'Priya Singh', status: 'pending', bonusEarned: 0 }
-      ],
-      referralLink: `https://gaulaxmi.com/ref/${Math.random().toString(36).substr(2, 9)}`,
-      password: pass || '123456',
-      phone: ''
-    };
-    
-    list.push(newUser);
-    setAllUsers(list);
-    localStorage.setItem('gaulaxmi_accounts', JSON.stringify(list));
-    setUser(newUser);
-    localStorage.setItem('gaulaxmi_user', JSON.stringify(newUser));
-  };
-
-  const register = (name: string, email: string, pass: string) => {
-    const newUser: User = {
-      id: Math.random().toString(36).substr(2, 9),
-      name,
-      email,
-      balance: 0,
-      walletAddress: '0x' + Array.from({length: 40}, () => Math.floor(Math.random()*16).toString(16)).join(''),
-      isKycVerified: false,
-      kycStatus: 'not_started',
-      investments: [],
-      transactions: [],
-      referrals: [],
-      referralLink: `https://gaulaxmi.com/ref/${Math.random().toString(36).substr(2, 9)}`,
-      password: pass,
-      phone: ''
-    };
-    
-    const savedAccountsStr = localStorage.getItem('gaulaxmi_accounts');
-    let list: User[] = savedAccountsStr ? JSON.parse(savedAccountsStr) : [...allUsers];
-    list.push(newUser);
-    
-    setAllUsers(list);
-    localStorage.setItem('gaulaxmi_accounts', JSON.stringify(list));
-    setUser(newUser);
-    localStorage.setItem('gaulaxmi_user', JSON.stringify(newUser));
+    try {
+      const { token, user: created } = await api.register(name, email, pass);
+      setToken(token);
+      await applySession(created);
+      return { ok: true, user: created };
+    } catch (e) {
+      return { ok: false, message: e instanceof ApiError ? e.message : 'Registration failed' };
+    }
   };
 
   const logout = () => {
+    setToken(null);
     setUser(null);
-    localStorage.removeItem('gaulaxmi_user');
+    setAllUsers([]);
+    localStorage.removeItem(ADMIN_SESSION_KEY);
   };
 
-  const deposit = (amount: number) => {
-    if (!user) return;
-    const newTx: Transaction = { id: Math.random().toString(36).substr(2, 9), type: 'deposit', amount, date: new Date().toISOString(), status: 'completed' };
-    const updated = { ...user, balance: user.balance + amount, transactions: [newTx, ...(user.transactions || [])] };
-    saveUserStates(updated);
-  }
+  const refreshUsers = async () => {
+    if (!user || !isAdminUser(user)) return;
+    await loadAdminUsers();
+    try {
+      const me = await api.me();
+      setUser(me);
+    } catch {
+      /* ignore */
+    }
+  };
 
-  const withdraw = (amount: number) => {
-     if (!user || user.balance < amount) return;
-     const newTx: Transaction = { id: Math.random().toString(36).substr(2, 9), type: 'withdrawal', amount, date: new Date().toISOString(), status: 'pending' };
-     const updated = { ...user, balance: user.balance - amount, transactions: [newTx, ...(user.transactions || [])] };
-     saveUserStates(updated);
-  }
+  const deposit = async (amount: number) => {
+    const updated = await api.deposit(amount);
+    setUser(updated);
+  };
+
+  const withdraw = async (amount: number) => {
+    const updated = await api.withdraw(amount);
+    setUser(updated);
+  };
 
   const verifyKyc = () => {
-     if (!user) return;
-     const verificationNum = user.kycVerificationNumber || ('KYC-' + Math.floor(100000 + Math.random() * 900000) + '-GLX');
-     const updated: User = { ...user, isKycVerified: true, kycStatus: 'verified', kycVerificationNumber: verificationNum };
-     saveUserStates(updated);
-  }
-
-  const submitKyc = (details: KycDetails) => {
-    if (!user) return;
-    const verificationNum = 'KYC-' + Math.floor(100000 + Math.random() * 900000) + '-GLX';
-    const updated: User = { 
-      ...user, 
-      kycStatus: 'submitted', 
-      isKycVerified: false, 
-      kycVerificationNumber: verificationNum,
-      kycDetails: details
-    };
-    saveUserStates(updated);
+    /* KYC is approved by admin only — see submitKyc */
   };
 
-  const adminApproveKyc = (userId: string) => {
-    const list = [...allUsers];
-    const idx = list.findIndex(u => u.id === userId);
-    if (idx > -1) {
-      list[idx] = { 
-        ...list[idx], 
-        kycStatus: 'verified', 
-        isKycVerified: true 
-      };
-      
-      if (user && user.id === userId) {
-        saveUserStates(list[idx], list);
-      } else {
-        setAllUsers(list);
-        localStorage.setItem('gaulaxmi_accounts', JSON.stringify(list));
-      }
-    }
+  const submitKyc = async (details: KycDetails) => {
+    const updated = await api.submitKyc(details);
+    setUser(updated);
   };
 
-  const adminRejectKyc = (userId: string) => {
-    const list = [...allUsers];
-    const idx = list.findIndex(u => u.id === userId);
-    if (idx > -1) {
-      list[idx] = { 
-        ...list[idx], 
-        kycStatus: 'rejected', 
-        isKycVerified: false 
-      };
-      
-      if (user && user.id === userId) {
-        saveUserStates(list[idx], list);
-      } else {
-        setAllUsers(list);
-        localStorage.setItem('gaulaxmi_accounts', JSON.stringify(list));
-      }
-    }
+  const invest = async (planName: string, amount: number, planId?: string) => {
+    const updated = await api.invest(planId || '', planName, amount);
+    setUser(updated);
   };
 
-  const invest = (planName: string, amount: number) => {
-     if (!user || user.balance < amount) return;
-     const newInvestment = { id: Math.random().toString(36).substr(2, 9), planName, amount, date: new Date().toISOString() };
-     const newTx: Transaction = { id: Math.random().toString(36).substr(2, 9), type: 'investment', amount, date: new Date().toISOString(), status: 'completed', details: planName };
-     const updated = { ...user, balance: user.balance - amount, investments: [...(user.investments || []), newInvestment], transactions: [newTx, ...(user.transactions || [])] };
-     saveUserStates(updated);
-  }
-
-  const updateProfile = (name: string, email: string, phone: string, profileImage?: string) => {
-    if (!user) return;
-    const updated = { ...user, name, email, phone, ...(profileImage !== undefined ? { profileImage } : {}) };
-    saveUserStates(updated);
+  const updateProfile = async (
+    name: string,
+    email: string,
+    phone: string,
+    profileImage?: string
+  ) => {
+    const updated = await api.updateProfile({ name, email, phone, profileImage });
+    setUser(updated);
   };
 
-  const changePassword = (newPass: string) => {
-    if (!user) return;
-    const updated = { ...user, password: newPass };
-    saveUserStates(updated);
+  const changePassword = async (newPass: string) => {
+    await api.changePassword(newPass);
   };
 
-  const deleteAccount = () => {
-    const list = allUsers.filter(u => u.id !== user?.id);
-    localStorage.removeItem('gaulaxmi_user');
-    setUser(null);
-    setAllUsers(list);
-    localStorage.setItem('gaulaxmi_accounts', JSON.stringify(list));
-  };
-
-  const deactivateAccount = () => {
-    if (!user) return;
-    const updated = { ...user, isDeactivated: true };
-    saveUserStates(updated);
+  const deleteAccount = async () => {
+    await api.deleteAccount();
     logout();
   };
 
+  const deactivateAccount = async () => {
+    await api.deactivateAccount();
+    logout();
+  };
+
+  const adminApproveKyc = async (userId: string) => {
+    const updated = await api.adminApproveKyc(userId);
+    syncUserInList(updated);
+    await loadAdminUsers();
+  };
+
+  const adminRejectKyc = async (userId: string, reason: string) => {
+    const updated = await api.adminRejectKyc(userId, reason);
+    syncUserInList(updated);
+    await loadAdminUsers();
+  };
+
+  const adminApproveKycSubmission = async (submissionId: string) => {
+    const updated = await api.adminApproveKycSubmission(submissionId);
+    syncUserInList(updated);
+    await loadAdminUsers();
+  };
+
+  const adminRejectKycSubmission = async (submissionId: string, reason: string) => {
+    const updated = await api.adminRejectKycSubmission(submissionId, reason);
+    syncUserInList(updated);
+    await loadAdminUsers();
+  };
+
+  const adminAdjustBalance = async (userId: string, amount: number, note: string) => {
+    const updated = await api.adminAdjustBalance(userId, amount, note);
+    syncUserInList(updated);
+    await loadAdminUsers();
+  };
+
+  const adminApproveWithdrawal = async (userId: string, txId: string) => {
+    const updated = await api.adminApproveWithdrawal(userId, txId);
+    syncUserInList(updated);
+    await loadAdminUsers();
+  };
+
+  const adminRejectWithdrawal = async (userId: string, txId: string) => {
+    const updated = await api.adminRejectWithdrawal(userId, txId);
+    syncUserInList(updated);
+    await loadAdminUsers();
+  };
+
+  const adminSetDeactivated = async (userId: string, deactivated: boolean) => {
+    const updated = await api.adminSetDeactivated(userId, deactivated);
+    syncUserInList(updated);
+    await loadAdminUsers();
+  };
+
+  const adminRemoveUser = async (userId: string) => {
+    await api.adminRemoveUser(userId);
+    if (user?.id === userId) logout();
+    else await loadAdminUsers();
+  };
+
+  const adminAssignInvestment = async (userId: string, planId: string): Promise<AuthResult> => {
+    try {
+      const updated = await api.adminAssignInvestment(userId, planId);
+      syncUserInList(updated);
+      await loadAdminUsers();
+      return { ok: true, user: updated };
+    } catch (e) {
+      return { ok: false, message: e instanceof ApiError ? e.message : 'Failed to assign plan' };
+    }
+  };
+
+  const adminSetMilestoneFulfillment = async (
+    userId: string,
+    milestoneId: string,
+    status: 'eligible' | 'fulfilled' | null
+  ) => {
+    const updated = await api.adminSetMilestoneFulfillment(userId, milestoneId, status);
+    syncUserInList(updated);
+    await loadAdminUsers();
+  };
+
   return (
-    <AuthContext.Provider value={{
-      user,
-      isLoggedIn: !!user,
-      allUsers,
-      login,
-      register,
-      logout,
-      deposit,
-      withdraw,
-      verifyKyc,
-      submitKyc,
-      adminApproveKyc,
-      adminRejectKyc,
-      invest,
-      updateProfile,
-      changePassword,
-      deleteAccount,
-      deactivateAccount
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isLoggedIn: !!user,
+        loading,
+        isAdmin: isAdminUser(user),
+        allUsers,
+        login,
+        register,
+        logout,
+        deposit,
+        withdraw,
+        verifyKyc,
+        submitKyc,
+        adminApproveKyc,
+        adminRejectKyc,
+        adminApproveKycSubmission,
+        adminRejectKycSubmission,
+        adminAdjustBalance,
+        adminApproveWithdrawal,
+        adminRejectWithdrawal,
+        adminSetDeactivated,
+        adminRemoveUser,
+        adminAssignInvestment,
+        adminSetMilestoneFulfillment,
+        refreshUsers,
+        invest,
+        updateProfile,
+        changePassword,
+        deleteAccount,
+        deactivateAccount,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

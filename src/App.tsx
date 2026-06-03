@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "./lib/auth";
 import { Dashboard } from "./components/Dashboard";
@@ -14,6 +14,24 @@ import gheeJarImg from "./assets/Images/ghee_jar_1779972795361.png";
 import milkBottleImg from "./assets/Images/milk_bottle_1779972816200.png";
 import incenseSticksImg from "./assets/Images/incense_sticks_1779972836448.png";
 import cowProductsPackImg from "./assets/Images/cow_products_pack_1779970125307.png";
+import { planToMarketingCard, getPlanSelectLabel } from "./lib/plans";
+import { useInvestmentPlans } from "./lib/useInvestmentPlans";
+import { useMilestones } from "./lib/useMilestones";
+import { getHighestMilestoneForAmount } from "./lib/milestones";
+import { validateContactInquiry, type FieldErrors } from "./lib/validation";
+import { addInquiry } from "./lib/inquiries";
+import { normalizeIndianPhone } from "./lib/validation";
+import { DASHBOARD_NAV_ITEMS, type DashboardTabId } from "./lib/dashboardNav";
+import { buildAdminEntryUrl } from "./lib/appBridge";
+import { PlanPurchaseFlow } from "./components/PlanPurchaseFlow";
+import {
+  clearPendingPlanPurchase,
+  loadPendingPlanPurchase,
+  savePendingPlanPurchase,
+  type PendingPlanPurchase,
+} from "./lib/planPurchaseFlow";
+import { formatINR } from "./lib/plans";
+import { toast } from "react-hot-toast";
 import {
   Milk,
   Coins,
@@ -53,8 +71,25 @@ import {
   CheckCircle,
   Clock,
   ShieldCheck,
-  LogOut
+  LogOut,
+  ArrowUpRight,
+  Network,
+  UserRound,
+  Settings,
+  LayoutDashboard,
 } from "lucide-react";
+
+const DASHBOARD_TAB_ICONS: Record<DashboardTabId, React.ReactNode> = {
+  overview: <Wallet className="w-4 h-4 shrink-0" />,
+  wallet: <ArrowUpRight className="w-4 h-4 shrink-0" />,
+  investments: <CheckCircle className="w-4 h-4 shrink-0" />,
+  transactions: <Clock className="w-4 h-4 shrink-0" />,
+  referrals: <Users className="w-4 h-4 shrink-0" />,
+  hierarchy: <Network className="w-4 h-4 shrink-0" />,
+  kyc: <ShieldCheck className="w-4 h-4 shrink-0" />,
+  profile: <UserRound className="w-4 h-4 shrink-0" />,
+  settings: <Settings className="w-4 h-4 shrink-0" />,
+};
 
 const containerClass = "max-w-7xl mx-auto px-4 sm:px-6";
 const sectionY = "py-16 sm:py-20 lg:py-24";
@@ -76,10 +111,11 @@ const navLinks = [
   { href: "#join-form", label: "Contact" },
 ];
 
-function Nav({ onDashboardOpen }: { onDashboardOpen: (tab: string) => void }) {
-  const { isLoggedIn, user, logout } = useAuth();
+function Nav({ onDashboardOpen }: { onDashboardOpen: (tab: DashboardTabId) => void }) {
+  const { isLoggedIn, user, logout, isAdmin } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     document.body.style.overflow = menuOpen ? "hidden" : "";
@@ -88,7 +124,40 @@ function Nav({ onDashboardOpen }: { onDashboardOpen: (tab: string) => void }) {
     };
   }, [menuOpen]);
 
+  useEffect(() => {
+    if (!profileDropdownOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setProfileDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [profileDropdownOpen]);
+
   const closeMenu = () => setMenuOpen(false);
+  const closeProfileMenu = () => setProfileDropdownOpen(false);
+
+  const openDashboardTab = (tab: DashboardTabId) => {
+    closeProfileMenu();
+    closeMenu();
+    onDashboardOpen(tab);
+  };
+
+  const handleSignOut = () => {
+    closeProfileMenu();
+    closeMenu();
+    logout();
+  };
+
+  const kycLabel =
+    user?.kycStatus === "verified" || user?.isKycVerified
+      ? "KYC Verified"
+      : user?.kycStatus === "submitted"
+      ? "KYC Pending"
+      : user?.kycStatus === "rejected"
+      ? "KYC Rejected"
+      : "KYC Required";
 
   const handleNavClick = (href: string) => (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
@@ -128,26 +197,87 @@ function Nav({ onDashboardOpen }: { onDashboardOpen: (tab: string) => void }) {
                 </a>
               )}
               {isLoggedIn ? (
-                <div className="relative">
-                  <button onClick={() => setProfileDropdownOpen(!profileDropdownOpen)} className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-2 rounded-full cursor-pointer hover:bg-primary/20 transition-all">
-                      {user?.profileImage ? (
-                        <div className="w-6 h-6 rounded-full overflow-hidden">
-                          <img src={user.profileImage} alt={user?.name || "User"} className="w-full h-full object-cover" />
-                        </div>
-                      ) : (
-                        <User className="w-5 h-5" />
-                      )}
-                      <span className="text-sm font-semibold max-w-[100px] truncate hidden sm:inline">{user?.name}</span>
+                <div className="relative" ref={profileMenuRef}>
+                  <button
+                    type="button"
+                    aria-expanded={profileDropdownOpen}
+                    aria-haspopup="menu"
+                    onClick={() => setProfileDropdownOpen((open) => !open)}
+                    className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-2 rounded-full cursor-pointer hover:bg-primary/20 transition-all"
+                  >
+                    {user?.profileImage ? (
+                      <div className="w-6 h-6 rounded-full overflow-hidden shrink-0">
+                        <img src={user.profileImage} alt={user?.name || "User"} className="w-full h-full object-cover" />
+                      </div>
+                    ) : (
+                      <User className="w-5 h-5 shrink-0" />
+                    )}
+                    <span className="text-sm font-semibold max-w-[100px] truncate hidden sm:inline">{user?.name}</span>
+                    <ChevronDown
+                      className={`w-4 h-4 shrink-0 hidden sm:block transition-transform ${profileDropdownOpen ? "rotate-180" : ""}`}
+                    />
                   </button>
                   {profileDropdownOpen && (
-                      <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-border rounded-xl shadow-lg flex flex-col py-2 z-[150]">
-                        <button className="text-left px-4 py-2 hover:bg-secondary/50 text-sm flex items-center gap-2" onClick={() => { setProfileDropdownOpen(false); onDashboardOpen('overview'); }}><Wallet className="w-4 h-4"/> Dashboard</button>
-                        <button className="text-left px-4 py-2 hover:bg-secondary/50 text-sm flex items-center gap-2" onClick={() => { setProfileDropdownOpen(false); onDashboardOpen('investments'); }}><CheckCircle className="w-4 h-4"/> Investment Plans</button>
-                        <button className="text-left px-4 py-2 hover:bg-secondary/50 text-sm flex items-center gap-2" onClick={() => { setProfileDropdownOpen(false); onDashboardOpen('transactions'); }}><Clock className="w-4 h-4"/> Transaction History</button>
-                        <button className="text-left px-4 py-2 hover:bg-secondary/50 text-sm flex items-center gap-2" onClick={() => { setProfileDropdownOpen(false); onDashboardOpen('kyc'); }}><ShieldCheck className="w-4 h-4"/> KYC</button>
-                        <hr className="my-1 border-border/50"/>
-                        <button className="text-left px-4 py-2 hover:bg-red-50 text-red-600 text-sm flex items-center gap-2" onClick={() => { setProfileDropdownOpen(false); logout(); }}><LogOut className="w-4 h-4"/> Sign Out</button>
+                    <div
+                      role="menu"
+                      className="absolute right-0 top-full mt-2 w-72 bg-white border border-border rounded-xl shadow-lg z-[150] overflow-hidden"
+                    >
+                      <div className="px-4 py-3 border-b border-border/60 bg-secondary/30">
+                        <p className="text-sm font-semibold text-foreground truncate">{user?.name}</p>
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">{user?.email}</p>
+                        <div className="flex items-center justify-between gap-2 mt-2 text-[11px]">
+                          <span className="text-muted-foreground">
+                            Balance: <span className="font-semibold text-primary">{formatINR(user?.balance ?? 0)}</span>
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full font-semibold ${
+                              user?.kycStatus === "verified" || user?.isKycVerified
+                                ? "bg-emerald-50 text-emerald-700"
+                                : user?.kycStatus === "submitted"
+                                ? "bg-amber-50 text-amber-700"
+                                : "bg-red-50 text-red-700"
+                            }`}
+                          >
+                            {kycLabel}
+                          </span>
+                        </div>
                       </div>
+                      <div className="py-1 max-h-[min(60vh,380px)] overflow-y-auto">
+                        {DASHBOARD_NAV_ITEMS.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            role="menuitem"
+                            className="w-full text-left px-4 py-2.5 hover:bg-secondary/50 text-sm text-foreground flex items-center gap-2.5 transition-colors"
+                            onClick={() => openDashboardTab(item.id)}
+                          >
+                            {DASHBOARD_TAB_ICONS[item.id]}
+                            {item.label}
+                          </button>
+                        ))}
+                        {isAdmin && (
+                          <a
+                            href={buildAdminEntryUrl()}
+                            role="menuitem"
+                            className="w-full text-left px-4 py-2.5 hover:bg-secondary/50 text-sm text-foreground flex items-center gap-2.5 transition-colors border-t border-border/40"
+                          >
+                            <LayoutDashboard className="w-4 h-4 shrink-0 text-amber-600" />
+                            Admin Console
+                          </a>
+                        )}
+                      </div>
+                      <div className="border-t border-border/50 py-1">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="w-full text-left px-4 py-2.5 hover:bg-red-50 text-red-600 text-sm flex items-center gap-2.5 transition-colors"
+                          onClick={handleSignOut}
+                        >
+                          <LogOut className="w-4 h-4 shrink-0" />
+                          Sign Out
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               ) : (
@@ -189,7 +319,41 @@ function Nav({ onDashboardOpen }: { onDashboardOpen: (tab: string) => void }) {
                   {l.label}
                 </a>
               ))}
-              {!isLoggedIn && (
+              {isLoggedIn ? (
+                <>
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold px-3 pt-2 pb-1">
+                    My Account
+                  </p>
+                  {DASHBOARD_NAV_ITEMS.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => openDashboardTab(item.id)}
+                      className="relative z-10 w-full text-left py-3 px-3 rounded-xl text-sm font-medium text-foreground/90 hover:bg-secondary/60 flex items-center gap-2.5 cursor-pointer touch-manipulation"
+                    >
+                      {DASHBOARD_TAB_ICONS[item.id]}
+                      {item.label}
+                    </button>
+                  ))}
+                  {isAdmin && (
+                    <a
+                      href={buildAdminEntryUrl()}
+                      className="relative z-10 block py-3 px-3 rounded-xl text-sm font-medium text-amber-800 hover:bg-amber-50 flex items-center gap-2.5 cursor-pointer touch-manipulation"
+                    >
+                      <LayoutDashboard className="w-4 h-4 shrink-0" />
+                      Admin Console
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    className="relative z-10 w-full text-left py-3 px-3 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2.5 mt-2 cursor-pointer touch-manipulation"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Sign Out
+                  </button>
+                </>
+              ) : (
                 <a
                   href="#contact"
                   onClick={handleNavClick("#contact")}
@@ -663,18 +827,9 @@ function CowProductsCarousel() {
   );
 }
 
-const plans = [
-  { tier: "Starter", invest: "₹1,00,000", monthly: "₹5,000", total: "₹3,00,000", earnings: "₹4,00,000" },
-  { tier: "Basic", invest: "₹2,00,000", monthly: "₹10,000", total: "₹6,00,000", earnings: "₹8,00,000" },
-  { tier: "Bronze", invest: "₹3,00,000", monthly: "₹15,000", total: "₹9,00,000", earnings: "₹12,00,000" },
-  { tier: "Copper", invest: "₹4,00,000", monthly: "₹20,000", total: "₹12,00,000", earnings: "₹16,00,000" },
-  { tier: "Silver", invest: "₹5,00,000", monthly: "₹25,000", total: "₹15,00,000", earnings: "₹20,00,000", featured: true },
-  { tier: "Gold", invest: "₹10,00,000", monthly: "₹50,000", total: "₹30,00,000", earnings: "₹40,00,000" },
-  { tier: "Platinum", invest: "₹15,00,000", monthly: "₹75,000", total: "₹45,00,000", earnings: "₹60,00,000" },
-  { tier: "Diamond", invest: "₹20,00,000", monthly: "₹1,00,000", total: "₹60,00,000", earnings: "₹80,00,000" },
-];
+function Plans({ onStartPurchase }: { onStartPurchase: (planId: string) => void }) {
+  const investmentPlans = useInvestmentPlans();
 
-function Plans() {
   return (
     <section id="plans" className={`${sectionY} bg-gradient-warm`}>
       <div className={containerClass}>
@@ -703,10 +858,12 @@ function Plans() {
         </div>
 
         <div className="grid grid-cols-1 min-[480px]:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-7">
-          {plans.map((p) => (
+          {investmentPlans.map((plan) => {
+            const p = planToMarketingCard(plan);
+            return (
             <div
-              key={p.invest}
-              id={`plan-${p.tier.toLowerCase()}`}
+              key={plan.id}
+              id={`plan-${plan.id}`}
               className={`relative rounded-[1.35rem] bg-[#fffdf9] border overflow-hidden transition-all duration-300 hover:-translate-y-1 ${
                 p.featured ? "border-[#b36a18] shadow-[0_10px_28px_rgba(130,84,30,0.16)] ring-1 ring-[#b36a18]/20" : "border-[#d8cec1] shadow-[0_4px_16px_rgba(86,58,29,0.08)]"
               }`}
@@ -760,20 +917,22 @@ function Plans() {
                     <span className="font-display text-lg font-bold text-[#8b5a23] leading-none">{p.earnings}</span>
                   </div>
 
-                  <a
-                    href="#contact"
-                    className={`mt-4 block w-full py-2.5 rounded-full font-semibold text-sm text-center transition-transform hover:scale-[1.02] ${
+                  <button
+                    type="button"
+                    onClick={() => onStartPurchase(plan.id)}
+                    className={`mt-4 block w-full py-2.5 rounded-full font-semibold text-sm text-center transition-transform hover:scale-[1.02] cursor-pointer ${
                       p.featured
                         ? "bg-[linear-gradient(90deg,#9a4f12_0%,#7a3d0d_55%,#6a3208_100%)] text-white shadow-md"
                         : "border border-[#9d6d3f] text-[#7b4b1d] bg-transparent hover:bg-[#f8f1e8]"
                     }`}
                   >
                     Get Started
-                  </a>
+                  </button>
                 </div>
               </div>
             </div>
-          ))}
+          );
+          })}
         </div>
         <p className="text-center mt-10 text-sm text-muted-foreground">
           Capital withdrawal: 15-day prior notice. <span className="text-primary font-medium">Profit withdrawal anytime.</span>
@@ -785,11 +944,13 @@ function Plans() {
 
 function ReturnCalculator() {
   const [amount, setAmount] = useState<number>(500000);
+  const milestones = useMilestones();
 
   // Return calculation variables based on 5% monthly return schema
   const monthlyReturn = amount * 0.05;
   const totalMonthlyPayout = monthlyReturn * 60;
   const totalReturn = totalMonthlyPayout + amount;
+  const milestoneTier = getHighestMilestoneForAmount(amount, milestones);
 
   return (
     <section id="calculator" className={`${sectionY} bg-[#fffdf9]`}>
@@ -861,16 +1022,14 @@ function ReturnCalculator() {
               <div className="text-left">
                 <div className="text-xs font-semibold text-bark uppercase tracking-wider">Milestone Reward Eligibility</div>
                 <div className="text-sm text-[#8c5f3a] mt-0.5">
-                  {amount >= 10000000 ? (
-                    <span className="font-semibold text-accent">🐄 Qualifies for 100+ Free Gir Cows milestone bonus!</span>
-                  ) : amount >= 5000000 ? (
-                    <span className="font-semibold text-accent">🐄 Qualifies for 50 Free Gir Cows milestone bonus!</span>
-                  ) : amount >= 3000000 ? (
-                    <span className="font-semibold text-accent">🐄 Qualifies for 30 Free Gir Cows milestone bonus!</span>
-                  ) : amount >= 1000000 ? (
-                    <span className="font-semibold text-accent">🐄 Qualifies for 10 Free Gir Cows milestone bonus!</span>
+                  {milestoneTier ? (
+                    <span className="font-semibold text-accent">
+                      🐄 Qualifies for {milestoneTier.cows} milestone bonus!
+                    </span>
                   ) : (
-                    <span>Invest ₹10,00,000+ to qualify for free Gir cows milestone rewards.</span>
+                    <span>
+                      Invest {formatINR(milestones[0]?.minInvest ?? 1_000_000)}+ to qualify for free Gir cows milestone rewards.
+                    </span>
                   )}
                 </div>
               </div>
@@ -885,14 +1044,8 @@ function ReturnCalculator() {
   );
 }
 
-const bonuses = [
-  { invest: "₹10 Lakh", cows: "10 Cows" },
-  { invest: "₹30 Lakh", cows: "30 Cows" },
-  { invest: "₹50 Lakh", cows: "50 Cows" },
-  { invest: "₹1 Crore", cows: "100 Cows" },
-];
-
 function Bonus() {
+  const milestones = useMilestones();
   const perks = [
     { title: "Zero Maintenance", value: "We manage feeding, housing, shelter & expert veterinary care at 0% cost to you." },
     { title: "Ancestry Certified", value: "Every Gir cow is tagged, certified purebred, with full pedigree documentation." },
@@ -945,38 +1098,20 @@ function Bonus() {
           {/* Right Column: Premium Interactive Milestone Tiers Grid */}
           <div className="lg:col-span-7 space-y-6">
             <div className="grid sm:grid-cols-2 gap-5">
-              {[
-                { 
-                  invest: "₹10 Lakh", 
-                  cows: "10 Gir Cows", 
-                  bonus: "Purity Certified Lineage", 
-                  bg: "bg-white",
-                  borderColor: "border-[#edd8c4]/40 hover:border-[#9a5f23]"
-                },
-                { 
-                  invest: "₹30 Lakh", 
-                  cows: "30 Gir Cows", 
-                  bonus: "Premium Milking Lineage", 
-                  bg: "bg-white",
-                  borderColor: "border-[#edd8c4]/40 hover:border-[#9a5f23]"
-                },
-                { 
-                  invest: "₹50 Lakh", 
-                  cows: "50 Gir Cows", 
-                  bonus: "Elite Breed Certification", 
-                  bg: "bg-white", 
-                  borderColor: "border-[#edd8c4]/40 hover:border-[#5c2d11]"
-                },
-                { 
-                  invest: "₹1 Crore +", 
-                  cows: "100+ Gir Cows", 
-                  bonus: "VVIP Direct Farm Share", 
-                  bg: "bg-gradient-to-br from-[#5c2d11] to-[#3d1e03] text-white",
-                  borderColor: "border-transparent shadow-xl"
-                }
-              ].map((b, idx) => (
+              {milestones.map((m, idx) => {
+                const isTop = idx === milestones.length - 1;
+                const b = {
+                  invest: m.label,
+                  cows: m.cows,
+                  bonus: m.bonus,
+                  bg: isTop ? "bg-gradient-to-br from-[#5c2d11] to-[#3d1e03] text-white" : "bg-white",
+                  borderColor: isTop
+                    ? "border-transparent shadow-xl"
+                    : "border-[#edd8c4]/40 hover:border-[#9a5f23]",
+                };
+                return (
                 <div 
-                  key={idx} 
+                  key={m.id} 
                   className={`relative p-6 sm:p-8 rounded-3xl border-2 ${b.bg} ${b.borderColor} transition-all duration-300 group hover:shadow-lg flex flex-col justify-between overflow-hidden`}
                 >
                   <div>
@@ -1010,7 +1145,8 @@ function Bonus() {
                     </p>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Visual Farm Banner */}
@@ -1097,6 +1233,7 @@ function Contact() {
 }
 
 function GetInTouch() {
+  const investmentPlans = useInvestmentPlans();
   const [fullname, setFullname] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -1104,28 +1241,41 @@ function GetInTouch() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullname.trim() || !phone.trim() || !plan) {
-      setErrorMsg("Please fill out all required fields (*).");
+    const errors = validateContactInquiry({
+      fullname,
+      phone,
+      email,
+      planId: plan,
+    });
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
-    setErrorMsg("");
+    setFieldErrors({});
     setLoading(true);
-    
-    // Simulate API registration submit
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await addInquiry({
+        fullname: fullname.trim(),
+        phone: normalizeIndianPhone(phone),
+        email: email.trim(),
+        planId: plan,
+        message: message.trim(),
+      });
       setSubmitted(true);
-      // Reset fields
       setFullname("");
       setPhone("");
       setEmail("");
       setPlan("");
       setMessage("");
-    }, 1200);
+    } catch {
+      toast.error("Could not submit inquiry. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -1223,11 +1373,14 @@ function GetInTouch() {
                   <input 
                     type="text" 
                     value={fullname}
-                    onChange={(e) => setFullname(e.target.value)}
+                    onChange={(e) => {
+                      setFullname(e.target.value);
+                      setFieldErrors((prev) => { const n = { ...prev }; delete n.fullname; return n; });
+                    }}
                     placeholder="Your full name" 
-                    required
-                    className="w-full bg-[#faf6f0] border-2 border-[#edd8c4] focus:ring-2 focus:ring-[#9a5f23]/20 focus:border-[#5c2d11] outline-none rounded-[10px] px-5 py-3.5 text-sm text-[#3d1e03] transition-all placeholder:text-[#ab927f]"
+                    className={`w-full bg-[#faf6f0] border-2 focus:ring-2 focus:ring-[#9a5f23]/20 focus:border-[#5c2d11] outline-none rounded-[10px] px-5 py-3.5 text-sm text-[#3d1e03] transition-all placeholder:text-[#ab927f] ${fieldErrors.fullname ? 'border-red-400' : 'border-[#edd8c4]'}`}
                   />
+                  {fieldErrors.fullname && <p className="text-xs text-red-600 mt-1">{fieldErrors.fullname}</p>}
                 </div>
                 <div className="text-left">
                   <label className="text-xs font-bold tracking-wider text-[#3d1e03] uppercase mb-2 block">
@@ -1236,11 +1389,16 @@ function GetInTouch() {
                   <input 
                     type="tel" 
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+91 XXXXX XXXXX" 
-                    required
-                    className="w-full bg-[#faf6f0] border-2 border-[#edd8c4] focus:ring-2 focus:ring-[#9a5f23]/20 focus:border-[#5c2d11] outline-none rounded-[10px] px-5 py-3.5 text-sm text-[#3d1e03] transition-all placeholder:text-[#ab927f]"
+                    onChange={(e) => {
+                      setPhone(e.target.value.replace(/[^\d+\s-]/g, ''));
+                      setFieldErrors((prev) => { const n = { ...prev }; delete n.phone; return n; });
+                    }}
+                    placeholder="+91 98765 43210" 
+                    inputMode="tel"
+                    maxLength={14}
+                    className={`w-full bg-[#faf6f0] border-2 focus:ring-2 focus:ring-[#9a5f23]/20 focus:border-[#5c2d11] outline-none rounded-[10px] px-5 py-3.5 text-sm text-[#3d1e03] transition-all placeholder:text-[#ab927f] ${fieldErrors.phone ? 'border-red-400' : 'border-[#edd8c4]'}`}
                   />
+                  {fieldErrors.phone && <p className="text-xs text-red-600 mt-1">{fieldErrors.phone}</p>}
                 </div>
               </div>
 
@@ -1251,10 +1409,14 @@ function GetInTouch() {
                 <input 
                   type="email" 
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setFieldErrors((prev) => { const n = { ...prev }; delete n.email; return n; });
+                  }}
                   placeholder="your@email.com" 
-                  className="w-full bg-[#faf6f0] border-2 border-[#edd8c4] focus:ring-2 focus:ring-[#9a5f23]/20 focus:border-[#5c2d11] outline-none rounded-[10px] px-5 py-3.5 text-sm text-[#3d1e03] transition-all placeholder:text-[#ab927f]"
+                  className={`w-full bg-[#faf6f0] border-2 focus:ring-2 focus:ring-[#9a5f23]/20 focus:border-[#5c2d11] outline-none rounded-[10px] px-5 py-3.5 text-sm text-[#3d1e03] transition-all placeholder:text-[#ab927f] ${fieldErrors.email ? 'border-red-400' : 'border-[#edd8c4]'}`}
                 />
+                {fieldErrors.email && <p className="text-xs text-red-600 mt-1">{fieldErrors.email}</p>}
               </div>
 
               <div className="text-left">
@@ -1264,16 +1426,18 @@ function GetInTouch() {
                 <div className="relative w-full">
                   <select 
                     value={plan}
-                    onChange={(e) => setPlan(e.target.value)}
-                    required
-                    className="w-full bg-[#faf6f0] border-2 border-[#edd8c4] focus:ring-2 focus:ring-[#9a5f23]/20 focus:border-[#5c2d11] outline-none rounded-[10px] pl-5 pr-12 py-3.5 text-sm text-[#3d1e03] transition-all appearance-none cursor-pointer"
+                    onChange={(e) => {
+                      setPlan(e.target.value);
+                      setFieldErrors((prev) => { const n = { ...prev }; delete n.plan; return n; });
+                    }}
+                    className={`w-full bg-[#faf6f0] border-2 focus:ring-2 focus:ring-[#9a5f23]/20 focus:border-[#5c2d11] outline-none rounded-[10px] pl-5 pr-12 py-3.5 text-sm text-[#3d1e03] transition-all appearance-none cursor-pointer ${fieldErrors.plan ? 'border-red-400' : 'border-[#edd8c4]'}`}
                   >
                     <option value="" disabled>Select a Plan</option>
-                    <option value="bronze">Bronze Gau Advisor (₹10,000 - ₹50,000)</option>
-                    <option value="silver">Silver Gau Patron (₹50,000 - ₹2,000,000)</option>
-                    <option value="gold">Gold Gau Partner (₹2,000,000 - ₹5,000,000)</option>
-                    <option value="diamond">Diamond Gau Visionary (₹5,000,000+)</option>
+                    {investmentPlans.map((p) => (
+                      <option key={p.id} value={p.id}>{getPlanSelectLabel(p)}</option>
+                    ))}
                   </select>
+                  {fieldErrors.plan && <p className="text-xs text-red-600 mt-1">{fieldErrors.plan}</p>}
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-[#9a5f23]">
                     <ChevronDown className="w-5 h-5" />
                   </div>
@@ -1292,10 +1456,6 @@ function GetInTouch() {
                   className="w-full bg-[#faf6f0] border-2 border-[#edd8c4] focus:ring-2 focus:ring-[#9a5f23]/20 focus:border-[#5c2d11] outline-none rounded-[10px] px-5 py-3.5 text-sm text-[#3d1e03] transition-all placeholder:text-[#ab927f] resize-none"
                 />
               </div>
-
-              {errorMsg && (
-                <div className="text-xs text-red-600 font-semibold">{errorMsg}</div>
-              )}
 
               {/* Alert Feedback messaging */}
               <AnimatePresence>
@@ -1400,7 +1560,40 @@ function Footer() {
 export default function App() {
   const { isLoggedIn } = useAuth();
   const [scrollProgress, setScrollProgress] = useState(0);
-  const [dashboardTab, setDashboardTab] = useState<string | null>(null);
+  const [dashboardTab, setDashboardTab] = useState<DashboardTabId | null>(null);
+  const [purchaseFlow, setPurchaseFlow] = useState<PendingPlanPurchase | null>(null);
+  const [pendingPurchase, setPendingPurchase] = useState<PendingPlanPurchase | null>(null);
+
+  const dismissPurchaseFlow = () => {
+    clearPendingPlanPurchase();
+    setPendingPurchase(null);
+    setPurchaseFlow(null);
+  };
+
+  const startPlanPurchase = (planId: string) => {
+    const flow = { planId, step: 'plan' as const };
+    savePendingPlanPurchase(flow);
+    setPendingPurchase(flow);
+    setPurchaseFlow(flow);
+  };
+
+  const openDashboardFromPurchase = (tab: DashboardTabId) => {
+    const pending = loadPendingPlanPurchase();
+    if (pending) setPendingPurchase(pending);
+    setPurchaseFlow(null);
+    setDashboardTab(tab);
+  };
+
+  const resumePurchaseFlow = () => {
+    const pending = loadPendingPlanPurchase() ?? pendingPurchase;
+    if (!pending) return;
+    setPurchaseFlow(pending);
+    setDashboardTab(null);
+  };
+
+  const closeDashboard = () => {
+    setDashboardTab(null);
+  };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -1424,7 +1617,15 @@ export default function App() {
       </div>
       {!dashboardTab && <Nav onDashboardOpen={setDashboardTab} />}
       {dashboardTab ? (
-         <Dashboard activeTab={dashboardTab} onTabChange={setDashboardTab} onClose={() => setDashboardTab(null)} />
+         <Dashboard
+           activeTab={dashboardTab}
+           onTabChange={setDashboardTab}
+           onClose={closeDashboard}
+           pendingPlanPurchase={pendingPurchase}
+           onDismissPendingPurchase={dismissPurchaseFlow}
+           onResumePurchase={resumePurchaseFlow}
+           onStartPlanPurchase={startPlanPurchase}
+         />
       ) : (
         <main className="pt-14 sm:pt-16">
           <Hero isLoggedIn={isLoggedIn} />
@@ -1432,7 +1633,7 @@ export default function App() {
           <WhyChoose />
           <Income />
           <CowProductsCarousel />
-          <Plans />
+          <Plans onStartPurchase={startPlanPurchase} />
           <ReturnCalculator />
           <Bonus />
           <Contact />
@@ -1440,6 +1641,15 @@ export default function App() {
         </main>
       )}
       {!dashboardTab && <Footer />}
+
+      {purchaseFlow && (
+        <PlanPurchaseFlow
+          planId={purchaseFlow.planId}
+          initialStep={purchaseFlow.step}
+          onClose={dismissPurchaseFlow}
+          onOpenDashboard={openDashboardFromPurchase}
+        />
+      )}
     </div>
   );
 }

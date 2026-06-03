@@ -306,13 +306,13 @@ export function HierarchyTab() {
   }, [allNodes, searchQuery]);
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 sm:space-y-6 w-full min-w-0">
       {/* Header and Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h2 className="font-display font-bold text-2xl text-bark flex items-center gap-2">
-            <GitBranch className="w-6 h-6 text-primary" />
-            MLM Referral Network Tree
+          <h2 className="font-display font-bold text-xl sm:text-2xl text-bark flex items-center gap-2 flex-wrap">
+            <GitBranch className="w-5 h-5 sm:w-6 sm:h-6 text-primary shrink-0" />
+            My Network
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
             Track user relationships from the Gaulaxmi Founder down to the deepest nodes.
@@ -404,9 +404,9 @@ export function HierarchyTab() {
       </div>
 
       {/* Main View Area */}
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 sm:gap-6 items-start">
         {/* Network Area */}
-        <div className="xl:col-span-3 bg-white border border-stone-200 rounded-3xl overflow-hidden shadow-sm h-[600px] relative flex flex-col hierarchy-tree-nodes-container">
+        <div className="xl:col-span-3 bg-white border border-stone-200 rounded-2xl sm:rounded-3xl overflow-hidden shadow-sm min-h-[320px] h-[min(55vh,520px)] sm:h-[min(60vh,600px)] relative flex flex-col hierarchy-tree-nodes-container">
           {view === 'flow' ? (
             <FlowTreeView rootNode={activeRoot} onSelectNode={setSelectedNode} selectedNode={selectedNode} searchQuery={searchQuery} />
           ) : view === 'grid' ? (
@@ -427,7 +427,7 @@ export function HierarchyTab() {
         </div>
 
         {/* Member Details Inspector Panel */}
-        <div className="xl:col-span-1 bg-white border border-stone-200 rounded-3xl p-6 shadow-sm space-y-6">
+        <div className="xl:col-span-1 bg-white border border-stone-200 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-sm space-y-4 sm:space-y-6">
           <div className="border-b border-stone-100 pb-4">
             <h3 className="font-display font-bold text-lg text-bark">Member Details</h3>
             <p className="text-xs text-muted-foreground mt-1">Real-time MLM credentials and node overview</p>

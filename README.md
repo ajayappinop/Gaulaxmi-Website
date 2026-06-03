@@ -1,20 +1,62 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Gaulaxmi Global Wellness
 
-# Run and deploy your AI Studio app
+Marketing site, member dashboard, and admin console for the Gaulaxmi investment platform.
 
-This contains everything you need to run your app locally.
+## Stack
 
-View your app in AI Studio: https://ai.studio/apps/f64d8eda-af0e-4973-be68-8dbba6030c13
+- **Frontend:** React 19, Vite 6, Tailwind CSS v4, TypeScript
+- **Backend:** Express API, JSON file database (`server/data/database.json`), JWT auth, bcrypt passwords
 
-## Run Locally
+## Run locally (full stack)
 
-**Prerequisites:**  Node.js
+Install dependencies:
 
+```bash
+npm install
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Start API + main website + admin panel:
+
+```bash
+npm run dev:all
+```
+
+Or run separately:
+
+| Command | URL | Purpose |
+|---------|-----|---------|
+| `npm run dev:api` | http://localhost:4000/api | REST API |
+| `npm run dev` | **http://localhost:3000** | Gaulaxmi main website |
+| `npm run dev:admin` | **http://localhost:3001** | Gaulaxmi admin panel |
+
+**Main website:** **http://localhost:3000**  
+**Admin panel:** **http://localhost:3001** (linked from profile menu when signed in as admin)
+
+Copy `.env.example` to `.env` and set `JWT_SECRET` for production.
+
+## Demo accounts (seeded on first API start)
+
+| Role | Email | Password |
+|------|-------|----------|
+| Admin | `admin@gaulaxmi.io` | `admin123` |
+| Member | `vikram@gaulaxmi.io` | `member123` |
+
+## API overview
+
+- `GET /api/health` — health check
+- `GET /api/plans`, `GET /api/milestones` — public catalog
+- `POST /api/inquiries` — contact form leads
+- `POST /api/auth/register`, `POST /api/auth/login` — JWT session
+- `GET /api/auth/me` — current user (Bearer token)
+- `POST /api/wallet/deposit`, `POST /api/wallet/withdraw`, `POST /api/kyc/submit`, `POST /api/investments` — member actions
+- `GET /api/admin/users` and `/api/admin/*` — admin-only management (plans, milestones, KYC, withdrawals, investments)
+
+Data persists in `server/data/database.json` (gitignored). Both frontends proxy `/api` to port **4000** in development.
+
+## Build
+
+```bash
+npm run build        # member site → dist/
+npm run build:admin  # admin → dist-admin/ (optional; main build includes dist/admin/)
+npm run start:api    # production API (set SERVE_STATIC=1 to also serve dist/ + dist/admin/)
+```

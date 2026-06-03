@@ -1,0 +1,72 @@
+/**
+ * Admin panel typography & base sizing — scoped to .admin-app
+ * Uses site fonts: Inter (body), Playfair Display (headings)
+ */
+
+.admin-app {
+  font-family: var(--font-sans);
+  font-size: 0.9375rem; /* 15px — readable UI base */
+  line-height: 1.5;
+  color: oklch(0.25 0.05 45);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.admin-app h1,
+.admin-app h2,
+.admin-app h3,
+.admin-app .admin-font-display {
+  font-family: var(--font-display);
+}
+
+.admin-app .admin-page-title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: oklch(0.25 0.05 45);
+}
+
+@media (min-width: 640px) {
+  .admin-app .admin-page-title {
+    font-size: 1.625rem;
+  }
+}
+
+.admin-app .admin-page-desc {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: oklch(0.45 0.04 50);
+}
+
+.admin-app .admin-section-title {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: oklch(0.25 0.05 45);
+}
+
+.admin-app .admin-eyebrow {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.admin-app table {
+  font-size: 0.875rem;
+}
+
+.admin-app input,
+.admin-app select,
+.admin-app textarea,
+.admin-app button {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.admin-app .tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
