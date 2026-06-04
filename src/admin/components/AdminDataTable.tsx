@@ -180,19 +180,52 @@ export function AdminEmptyRow({
   );
 }
 
+/** Clickable member name — navigates to member detail when onViewMember is provided */
+export function AdminMemberNameLink({
+  name,
+  userId,
+  onViewMember,
+  className = 'text-sm font-semibold text-stone-900',
+}: {
+  name: string;
+  userId?: string;
+  onViewMember?: (userId: string) => void;
+  className?: string;
+}) {
+  if (userId && onViewMember) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onViewMember(userId);
+        }}
+        className={`${className} truncate text-left hover:text-[#7f4e1c] hover:underline cursor-pointer`}
+      >
+        {name}
+      </button>
+    );
+  }
+  return <span className={`${className} truncate`}>{name}</span>;
+}
+
 /** Name + email stack used in member columns */
 export function AdminMemberCell({
   name,
   sub,
   monoSub,
+  userId,
+  onViewMember,
 }: {
   name: string;
   sub?: string;
   monoSub?: boolean;
+  userId?: string;
+  onViewMember?: (userId: string) => void;
 }) {
   return (
     <div className="min-w-0">
-      <div className="text-sm font-semibold text-stone-900 truncate">{name}</div>
+      <AdminMemberNameLink name={name} userId={userId} onViewMember={onViewMember} />
       {sub && (
         <div
           className={`text-xs text-stone-500 mt-0.5 truncate ${monoSub ? 'font-mono' : ''}`}

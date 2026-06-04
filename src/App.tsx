@@ -21,8 +21,9 @@ import { getHighestMilestoneForAmount } from "./lib/milestones";
 import { validateContactInquiry, type FieldErrors } from "./lib/validation";
 import { addInquiry } from "./lib/inquiries";
 import { normalizeIndianPhone } from "./lib/validation";
-import { DASHBOARD_NAV_ITEMS, type DashboardTabId } from "./lib/dashboardNav";
-import { buildAdminEntryUrl } from "./lib/appBridge";
+import { DASHBOARD_NAV_ITEMS, isDashboardTabId, type DashboardTabId } from "./lib/dashboardNav";
+import { buildAdminEntryUrl, consumeOpenDashboardFromUrl } from "./lib/appBridge";
+import { isAdminUser } from "./lib/admin";
 import { PlanPurchaseFlow } from "./components/PlanPurchaseFlow";
 import {
   clearPendingPlanPurchase,
@@ -31,6 +32,7 @@ import {
   type PendingPlanPurchase,
 } from "./lib/planPurchaseFlow";
 import { formatINR } from "./lib/plans";
+import { downloadCorporatePdf } from "./lib/corporatePdf";
 import { toast } from "react-hot-toast";
 import {
   Milk,
@@ -77,16 +79,19 @@ import {
   UserRound,
   Settings,
   LayoutDashboard,
+  LifeBuoy,
 } from "lucide-react";
 
 const DASHBOARD_TAB_ICONS: Record<DashboardTabId, React.ReactNode> = {
   overview: <Wallet className="w-4 h-4 shrink-0" />,
   wallet: <ArrowUpRight className="w-4 h-4 shrink-0" />,
   investments: <CheckCircle className="w-4 h-4 shrink-0" />,
+  progress: <TrendingUp className="w-4 h-4 shrink-0" />,
   transactions: <Clock className="w-4 h-4 shrink-0" />,
   referrals: <Users className="w-4 h-4 shrink-0" />,
   hierarchy: <Network className="w-4 h-4 shrink-0" />,
   kyc: <ShieldCheck className="w-4 h-4 shrink-0" />,
+  support: <LifeBuoy className="w-4 h-4 shrink-0" />,
   profile: <UserRound className="w-4 h-4 shrink-0" />,
   settings: <Settings className="w-4 h-4 shrink-0" />,
 };
@@ -458,26 +463,17 @@ function Hero({ isLoggedIn }: { isLoggedIn: boolean }) {
               Explore Active Tiers
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1.5 transition-transform" />
             </a>
-            <a
-              href="#"
-              onClick={(e) => {
-                e.preventDefault();
-                const pdfContent = `%PDF-1.4\n1 0 obj < < /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj < < /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj < < /Type /Page /Parent 2 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /MediaBox [0 0 595 842] /Contents 4 0 R >> endobj\n4 0 obj < < /Length 195 >> stream\nBT\n/F1 18 Tf\n50 780 Td\n(Gaulaxmi Global Wellness) Tj\n0 -30 Td\n/F1 12 Tf\n(Corporate Presentation & Executive Project Report) Tj\n0 -40 Td\n(Welcome to Gaulaxmi. This document acts as your overview.) Tj\n0 -25 Td\n(Timeless heritage meets multi-income yield engines.) Tj\n0 -25 Td\n(Secured passive monthly ROI of 5% for 60 months.) Tj\nET\nendstream\nendobj\nxref\n0 5\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n0000000282 00000 n \ntrailer < < /Size 5 /Root 1 0 R >>\nstartxref\n549\n%%EOF`;
-                const blob = new Blob([pdfContent], { type: "application/pdf" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = "Gaulaxmi_Corporate_Presentation.pdf";
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
+            <button
+              type="button"
+              onClick={() => {
+                downloadCorporatePdf();
+                toast.success('Downloading Gaulaxmi presentation…', { duration: 2500 });
               }}
-              className="inline-flex items-center justify-center gap-2 backdrop-blur-md bg-cream/10 border border-cream/35 text-cream px-6 sm:px-8 py-3.5 sm:py-4 rounded-full font-medium hover:bg-cream/20 transition-all duration-300 text-sm sm:text-base"
+              className="inline-flex items-center justify-center gap-2 backdrop-blur-md bg-cream/10 border border-cream/35 text-cream px-6 sm:px-8 py-3.5 sm:py-4 rounded-full font-medium hover:bg-cream/20 transition-all duration-300 text-sm sm:text-base cursor-pointer"
             >
               <FileDown className="w-4 h-4 text-gold shrink-0" />
               Download Full PDF
-            </a>
+            </button>
           </motion.div>
 
           {/* Staggered animated badges on sub-hero status block */}
@@ -1558,7 +1554,7 @@ function Footer() {
 }
 
 export default function App() {
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, user, loading: authLoading } = useAuth();
   const [scrollProgress, setScrollProgress] = useState(0);
   const [dashboardTab, setDashboardTab] = useState<DashboardTabId | null>(null);
   const [purchaseFlow, setPurchaseFlow] = useState<PendingPlanPurchase | null>(null);
@@ -1606,6 +1602,13 @@ export default function App() {
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (authLoading || !isLoggedIn || !user || isAdminUser(user)) return;
+    const openTab = consumeOpenDashboardFromUrl();
+    if (openTab === false) return;
+    setDashboardTab(isDashboardTabId(openTab) ? openTab : 'overview');
+  }, [authLoading, isLoggedIn, user]);
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-background text-foreground antialiased selection:bg-[#f2e2c9] selection:text-[#9a5f23]">

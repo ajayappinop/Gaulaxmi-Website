@@ -13,10 +13,12 @@ export interface AdminOverviewStats {
   pendingKyc: number;
   verifiedKyc: number;
   pendingWithdrawals: number;
+  pendingDeposits: number;
   totalWalletBalance: number;
   totalInvested: number;
   newInquiries: number;
   totalInquiries: number;
+  openSupportTickets: number;
 }
 
 export function computeOverviewStats(users: User[], inquiries: ContactInquiry[] = []): AdminOverviewStats {
@@ -41,10 +43,12 @@ export function computeOverviewStats(users: User[], inquiries: ContactInquiry[] 
     pendingKyc: members.filter((m) => m.kycStatus === 'submitted').length,
     verifiedKyc: members.filter((m) => m.isKycVerified || m.kycStatus === 'verified').length,
     pendingWithdrawals,
+    pendingDeposits: 0,
     totalWalletBalance,
     totalInvested,
     newInquiries: inquiries.filter((q) => q.status === 'new').length,
     totalInquiries: inquiries.length,
+    openSupportTickets: 0,
   };
 }
 

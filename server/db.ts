@@ -1,7 +1,16 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import type { ContactInquiry, DbUser, InvestmentPlan, MilestoneTier } from '../shared/types.js';
+import type {
+  ContactInquiry,
+  DbUser,
+  DepositRequest,
+  SupportTicket,
+  DepositSettings,
+  PaymentSettings,
+  InvestmentPlan,
+  MilestoneTier,
+} from '../shared/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const DATA_DIR = path.join(__dirname, 'data');
@@ -11,6 +20,10 @@ export interface Database {
   plans: InvestmentPlan[];
   milestones: MilestoneTier[];
   inquiries: ContactInquiry[];
+  depositSettings?: DepositSettings;
+  paymentSettings?: PaymentSettings;
+  depositRequests?: DepositRequest[];
+  supportTickets?: SupportTicket[];
 }
 
 const DB_FILE = path.join(DATA_DIR, 'database.json');
@@ -34,6 +47,10 @@ export function readDb(): Database {
       plans: parsed.plans ?? [],
       milestones: parsed.milestones ?? [],
       inquiries: parsed.inquiries ?? [],
+      depositSettings: parsed.depositSettings,
+      paymentSettings: parsed.paymentSettings,
+      depositRequests: parsed.depositRequests ?? [],
+      supportTickets: parsed.supportTickets ?? [],
     };
   } catch {
     return { users: [], plans: [], milestones: [], inquiries: [] };

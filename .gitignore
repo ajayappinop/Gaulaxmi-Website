@@ -7,3 +7,5 @@ coverage/
 .env*
 !.env.example
 server/data/
+# Large hero PDF (~50MB+) — keep a copy at public/Gaulaxmi.pdf locally (see public/README.md)
+public/Gaulaxmi.pdf

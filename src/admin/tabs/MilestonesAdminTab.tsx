@@ -25,6 +25,8 @@ import {
   AdminMoney,
 } from '../components/AdminDataTable';
 import { useAdminTable } from '../hooks/useAdminTable';
+import { adminTableControlProps } from '../components/AdminTableToolbar';
+import { memberLatestActivityDate } from '../../lib/tableControls';
 import { AdminPageHeader } from '../components/AdminPageHeader';
 import { adminTypography } from '../adminTheme';
 
@@ -33,6 +35,7 @@ export function MilestonesAdminTab({
   milestones: milestonesFromApi,
   onSetFulfillment,
   onRefresh,
+  onViewMember,
 }: {
   users: User[];
   milestones: MilestoneTier[];
@@ -42,6 +45,7 @@ export function MilestonesAdminTab({
     status: 'eligible' | 'fulfilled' | null
   ) => void | Promise<void>;
   onRefresh: () => void | Promise<void>;
+  onViewMember: (userId: string) => void;
 }) {
   const [tiers, setTiers] = useState<MilestoneTier[]>(milestonesFromApi);
 
@@ -72,6 +76,8 @@ export function MilestonesAdminTab({
       }
       return true;
     },
+    getSortValue: (row) => row.totalInvested,
+    getItemDate: (row) => memberLatestActivityDate(row.user),
   });
 
   const refreshTiers = () => setTiers(milestonesFromApi);
@@ -232,6 +238,7 @@ export function MilestonesAdminTab({
             page={table.page}
             totalPages={table.totalPages}
             onPageChange={table.setPage}
+            {...adminTableControlProps(table)}
           />
         }
       >
@@ -253,7 +260,12 @@ export function MilestonesAdminTab({
                   <React.Fragment key={row.user.id}>
                     <AdminTr>
                       <AdminTd>
-                        <AdminMemberCell name={row.user.name} sub={row.user.email} />
+                        <AdminMemberCell
+                          name={row.user.name}
+                          sub={row.user.email}
+                          userId={row.user.id}
+                          onViewMember={onViewMember}
+                        />
                       </AdminTd>
                       <AdminTd align="right">
                         <AdminMoney amount={formatINR(row.totalInvested)} />

@@ -27,6 +27,7 @@ import {
   AdminMoney,
 } from '../components/AdminDataTable';
 import { useAdminTable } from '../hooks/useAdminTable';
+import { adminTableControlProps } from '../components/AdminTableToolbar';
 import { AdminPageHeader } from '../components/AdminPageHeader';
 import { adminTypography } from '../adminTheme';
 
@@ -61,6 +62,7 @@ export function PlansAdminTab({
       if (f === 'has_purchases') return countPurchasesByPlan(p.id, p.tier, purchases) > 0;
       return true;
     },
+    getSortValue: (p) => p.amount,
   });
 
   const refreshPlans = () => setPlans(plansFromApi);
@@ -232,6 +234,7 @@ export function PlansAdminTab({
         page={table.page}
         totalPages={table.totalPages}
         onPageChange={table.setPage}
+        {...adminTableControlProps(table)}
       />
 
       <AdminTableCard>

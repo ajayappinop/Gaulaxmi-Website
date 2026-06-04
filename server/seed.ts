@@ -3,6 +3,7 @@ import type { DbUser } from '../shared/types.js';
 import type { Database } from './db.js';
 import { DEFAULT_PLANS } from './defaultPlans.js';
 import { DEFAULT_MILESTONES } from './defaultMilestones.js';
+import { DEFAULT_PAYMENT_SETTINGS } from './defaultPaymentSettings.js';
 
 export async function buildSeedDatabase(): Promise<Database> {
   const adminHash = await bcrypt.hash('admin123', 10);
@@ -10,6 +11,7 @@ export async function buildSeedDatabase(): Promise<Database> {
   const adminSeed: DbUser = {
     id: 'gaulaxmi_admin',
     role: 'admin',
+    adminRole: 'super_admin',
     name: 'Gaulaxmi Admin',
     email: 'admin@gaulaxmi.io',
     passwordHash: adminHash,
@@ -149,5 +151,15 @@ export async function buildSeedDatabase(): Promise<Database> {
     plans: [...DEFAULT_PLANS],
     milestones: [...DEFAULT_MILESTONES],
     inquiries: [],
+    paymentSettings: {
+      ...DEFAULT_PAYMENT_SETTINGS,
+      updatedAt: new Date().toISOString(),
+    },
+    depositSettings: {
+      ...DEFAULT_PAYMENT_SETTINGS.deposits,
+      updatedAt: new Date().toISOString(),
+    },
+    depositRequests: [],
+    supportTickets: [],
   };
 }

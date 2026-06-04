@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Check, ChevronDown, ShieldCheck, X } from 'lucide-react';
 import { api } from '../../lib/apiClient';
-import type { AdminKycSubmissionRow, PaginatedKycSubmissions } from '../../../shared/types';
+import type { AdminKycSubmissionRow } from '../../../shared/types';
 import { toast } from 'react-hot-toast';
-import { AdminTableToolbar } from '../components/AdminTableToolbar';
+import { AdminTableToolbar, adminTableControlProps } from '../components/AdminTableToolbar';
+import { useTableList } from '../../hooks/useTableList';
 import { AdminPageHeader } from '../components/AdminPageHeader';
 import { adminTypography } from '../adminTheme';
+import { AdminMemberNameLink } from '../components/AdminDataTable';
 
 type StatusFilter = 'all' | 'submitted' | 'verified' | 'rejected';
 
@@ -35,18 +37,19 @@ function statusLabel(status: 'submitted' | 'verified' | 'rejected') {
 }
 
 export function KycAdminTab({
+  onViewMember,
   onApprove,
   onReject,
 }: {
+  onViewMember: (userId: string) => void;
   onApprove: (submissionId: string) => void | Promise<void>;
   onReject: (submissionId: string, reason: string) => void | Promise<void>;
 }) {
-  const [data, setData] = useState<PaginatedKycSubmissions | null>(null);
+  const [fetchedRows, setFetchedRows] = useState<AdminKycSubmissionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -58,16 +61,22 @@ export function KycAdminTab({
       const result = await api.getAdminKycSubmissions({
         status: statusFilter,
         search,
-        page,
-        pageSize: PAGE_SIZE,
+        page: 1,
+        pageSize: 5000,
       });
-      setData(result);
+      setFetchedRows(result.rows);
     } catch {
       toast.error('Could not load KYC submissions');
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, search, page]);
+  }, [statusFilter, search]);
+
+  const table = useTableList<AdminKycSubmissionRow>({
+    items: fetchedRows,
+    pageSize: PAGE_SIZE,
+    getItemDate: (r) => r.submittedAt,
+  });
 
   useEffect(() => {
     load();
@@ -76,10 +85,13 @@ export function KycAdminTab({
   useEffect(() => {
     const t = window.setTimeout(() => {
       setSearch(searchInput.trim());
-      setPage(1);
     }, 300);
     return () => window.clearTimeout(t);
   }, [searchInput]);
+
+  useEffect(() => {
+    table.setPage(1);
+  }, [search, statusFilter]);
 
   const submitReject = async () => {
     if (!rejectingId) return;
@@ -101,9 +113,7 @@ export function KycAdminTab({
     }
   };
 
-  const rows = data?.rows ?? [];
-  const totalPages = data?.totalPages ?? 1;
-  const total = data?.total ?? 0;
+  const rows = table.paginated;
 
   return (
     <div className="space-y-5">
@@ -121,13 +131,15 @@ export function KycAdminTab({
         filter={statusFilter}
         onFilterChange={(id) => {
           setStatusFilter(id as StatusFilter);
-          setPage(1);
+          table.setPage(1);
         }}
-        total={total}
-        page={data?.page ?? page}
-        totalPages={totalPages}
-        onPageChange={setPage}
+        total={table.total}
+        page={table.page}
+        totalPages={table.totalPages}
+        onPageChange={table.setPage}
+        pageSize={PAGE_SIZE}
         loading={loading}
+        {...adminTableControlProps(table)}
       />
 
       {loading ? (
@@ -156,7 +168,11 @@ export function KycAdminTab({
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold text-stone-900">{row.userName}</span>
+                    <AdminMemberNameLink
+                      name={row.userName}
+                      userId={row.userId}
+                      onViewMember={onViewMember}
+                    />
                     <span
                       className={`text-xs uppercase font-bold px-2 py-0.5 rounded-full border ${statusBadge(row.status)}`}
                     >

@@ -8,6 +8,17 @@ import { initDb } from './initDb.js';
 import { readDb, updateDb, writeDb } from './db.js';
 import { requireAuth, requireAdmin, signToken } from './middleware/auth.js';
 import {
+  requireAdminPermission,
+  requireSuperAdmin,
+} from './middleware/adminPermissions.js';
+import { getAdminAccessPayload } from './services/adminAccess.js';
+import {
+  createStaffAdmin,
+  listAdminTeam,
+  revokeStaffAdmin,
+  updateStaffAdmin,
+} from './services/adminTeam.js';
+import {
   findDbUser,
   findDbUserByEmail,
   mutateUser,
@@ -43,6 +54,32 @@ import type {
   Transaction,
 } from '../shared/types.js';
 import { DEFAULT_PLANS } from './defaultPlans.js';
+import {
+  approveDepositRequest,
+  completeGatewayDeposit,
+  createGatewayDepositOrder,
+  getUserDepositRequests,
+  queryDepositRequests,
+  rejectDepositRequest,
+  submitManualDepositRequest,
+  countPendingDepositRequests,
+} from './services/deposits.js';
+import {
+  countOpenSupportTickets,
+  createSupportTicket,
+  getUserSupportTickets,
+  querySupportTickets,
+  updateSupportTicket,
+} from './services/tickets.js';
+import {
+  ensurePaymentSettings,
+  getDepositSettingsFromDb,
+  getPaymentSettingsFromDb,
+  savePaymentSettings,
+  toPublicPaymentSettings,
+  validateWithdrawalAmount,
+} from './services/paymentSettings.js';
+import type { DepositSettings, PaymentSettings } from '../shared/types.js';
 
 const PORT = Number(process.env.PORT) || 4000;
 const app = express();
@@ -186,43 +223,85 @@ app.post('/api/auth/deactivate', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-// —— Member wallet & invest ——
-app.post('/api/wallet/deposit', requireAuth, (req, res) => {
-  const amount = Number(req.body?.amount);
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return res.status(400).json({ error: 'Invalid deposit amount' });
-  }
-  const dbUser = findDbUser(req.auth!.userId);
-  if (!dbUser) return res.status(404).json({ error: 'User not found' });
-  if (!isKycVerifiedUser(dbUser)) {
-    return res.status(403).json({ error: 'KYC must be approved by admin before depositing funds' });
-  }
-  const updated = mutateUser(req.auth!.userId, (u) => {
-    const tx: Transaction = {
-      id: newId('tx_'),
-      type: 'deposit',
-      amount,
-      date: new Date().toISOString(),
-      status: 'completed',
-    };
-    u.balance += amount;
-    u.transactions = [tx, ...(u.transactions || [])];
-  });
-  res.json(updated);
+// —— Payment settings & deposit requests ——
+app.get('/api/payment/settings', (_req, res) => {
+  res.json(toPublicPaymentSettings(ensurePaymentSettings()));
 });
+
+app.get('/api/deposits/settings', (_req, res) => {
+  res.json(toPublicPaymentSettings(ensurePaymentSettings()).deposits);
+});
+
+app.get('/api/deposits/mine', requireAuth, (req, res) => {
+  res.json(getUserDepositRequests(req.auth!.userId));
+});
+
+app.post('/api/deposits/manual', requireAuth, (req, res) => {
+  try {
+    const amount = Number(req.body?.amount);
+    const utr = String(req.body?.utr ?? '');
+    const paymentNote = req.body?.paymentNote ? String(req.body.paymentNote) : undefined;
+    const paymentScreenshot = req.body?.paymentScreenshot;
+    const paymentScreenshotName = req.body?.paymentScreenshotName
+      ? String(req.body.paymentScreenshotName)
+      : undefined;
+    const updated = submitManualDepositRequest(
+      req.auth!.userId,
+      amount,
+      utr,
+      paymentNote,
+      paymentScreenshot,
+      paymentScreenshotName
+    );
+    res.status(201).json(updated);
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Deposit request failed' });
+  }
+});
+
+app.post('/api/deposits/gateway/order', requireAuth, (req, res) => {
+  try {
+    const amount = Number(req.body?.amount);
+    const order = createGatewayDepositOrder(req.auth!.userId, amount);
+    res.status(201).json(order);
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Could not create payment order' });
+  }
+});
+
+app.post('/api/deposits/gateway/complete', requireAuth, (req, res) => {
+  try {
+    const orderId = String(req.body?.orderId ?? '').trim();
+    if (!orderId) return res.status(400).json({ error: 'orderId is required' });
+    const updated = completeGatewayDeposit(req.auth!.userId, orderId);
+    res.json(updated);
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Payment confirmation failed' });
+  }
+});
+
+/** @deprecated Use POST /api/deposits/manual or gateway flow */
+app.post('/api/wallet/deposit', requireAuth, (_req, res) => {
+  res.status(400).json({
+    error: 'Instant deposits are disabled. Submit a deposit request from your wallet (manual transfer or payment gateway).',
+  });
+});
+
+// —— Member wallet & invest ——
 
 app.post('/api/wallet/withdraw', requireAuth, (req, res) => {
   const amount = Number(req.body?.amount);
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return res.status(400).json({ error: 'Invalid withdrawal amount' });
-  }
   const dbUser = findDbUser(req.auth!.userId);
-  if (!dbUser || dbUser.balance < amount) {
-    return res.status(400).json({ error: 'Insufficient balance' });
+  if (!dbUser) return res.status(404).json({ error: 'User not found' });
+  const pay = ensurePaymentSettings();
+  if (!pay.withdrawals.enabled) {
+    return res.status(403).json({ error: 'Withdrawals are temporarily disabled' });
   }
-  if (!isKycVerifiedUser(dbUser)) {
+  if (pay.withdrawals.requireKyc && !isKycVerifiedUser(dbUser)) {
     return res.status(403).json({ error: 'KYC must be approved by admin before withdrawing funds' });
   }
+  const amountError = validateWithdrawalAmount(amount, dbUser.balance);
+  if (amountError) return res.status(400).json({ error: amountError });
   const updated = mutateUser(req.auth!.userId, (u) => {
     const tx: Transaction = {
       id: newId('tx_'),
@@ -276,17 +355,78 @@ app.post('/api/investments', requireAuth, (req, res) => {
   }
 });
 
+app.post('/api/tickets', requireAuth, (req, res) => {
+  try {
+    const ticket = createSupportTicket(req.auth!.userId, req.body ?? {});
+    res.status(201).json(ticket);
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Could not create ticket' });
+  }
+});
+
+app.get('/api/tickets/mine', requireAuth, (req, res) => {
+  res.json(getUserSupportTickets(req.auth!.userId));
+});
+
 // —— Admin ——
+app.get('/api/admin/access', requireAdmin, (req, res) => {
+  res.json(getAdminAccessPayload(req.dbUser!));
+});
+
+app.get('/api/admin/team', requireSuperAdmin, (_req, res) => {
+  res.json(listAdminTeam());
+});
+
+app.post('/api/admin/team', requireSuperAdmin, (req, res) => {
+  try {
+    const user = createStaffAdmin(req.auth!.userId, req.body ?? {});
+    res.status(201).json(user);
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Failed to create admin' });
+  }
+});
+
+app.patch('/api/admin/team/:userId', requireSuperAdmin, (req, res) => {
+  try {
+    const user = updateStaffAdmin(req.auth!.userId, req.params.userId, req.body ?? {});
+    res.json(user);
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Failed to update admin' });
+  }
+});
+
+app.delete('/api/admin/team/:userId', requireSuperAdmin, (req, res) => {
+  try {
+    const user = revokeStaffAdmin(req.auth!.userId, req.params.userId);
+    res.json(user);
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Failed to revoke admin' });
+  }
+});
+
+/** Member list used across tabs — any panel admin may read */
 app.get('/api/admin/users', requireAdmin, (_req, res) => {
   const users = readDb().users.map(toPublicUser);
   res.json(users);
 });
 
-app.get('/api/admin/inquiries', requireAdmin, (_req, res) => {
+app.post('/api/admin/users/:userId/impersonate', requireAdmin, requireAdminPermission('users'), (req, res) => {
+  const target = findDbUser(req.params.userId);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  if (target.role === 'admin') {
+    return res.status(403).json({ error: 'Cannot open the dashboard as an admin account' });
+  }
+  if (target.isDeactivated) {
+    return res.status(403).json({ error: 'Member account is deactivated' });
+  }
+  res.json({ token: signToken(target), user: toPublicUser(target) });
+});
+
+app.get('/api/admin/inquiries', requireAdmin, requireAdminPermission('inquiries'), (_req, res) => {
   res.json(readDb().inquiries);
 });
 
-app.get('/api/admin/stats', requireAdmin, (_req, res) => {
+app.get('/api/admin/stats', requireAdmin, requireAdminPermission('overview'), (_req, res) => {
   const db = readDb();
   const members = db.users.filter((u) => !isAdminUser(u) && u.role !== 'admin');
   let pendingWithdrawals = 0;
@@ -309,16 +449,99 @@ app.get('/api/admin/stats', requireAdmin, (_req, res) => {
     pendingKyc: countPendingKycSubmissions(),
     verifiedKyc: members.filter((m) => m.isKycVerified || m.kycStatus === 'verified').length,
     pendingWithdrawals,
+    pendingDeposits: countPendingDepositRequests(),
     totalWalletBalance,
     totalInvested,
     newInquiries: inquiries.filter((q) => q.status === 'new').length,
     totalInquiries: inquiries.length,
+    openSupportTickets: countOpenSupportTickets(),
     planCount: db.plans.length,
     milestoneCount: db.milestones.length,
+    depositMode: ensurePaymentSettings().deposits.mode,
   });
 });
 
-app.patch('/api/admin/inquiries/:id', requireAdmin, (req, res) => {
+app.get('/api/admin/payment/settings', requireAdmin, requireAdminPermission('payment_settings'), (_req, res) => {
+  res.json(getPaymentSettingsFromDb());
+});
+
+app.put('/api/admin/payment/settings', requireAdmin, requireAdminPermission('payment_settings'), (req, res) => {
+  const body = req.body as PaymentSettings;
+  if (!body?.deposits?.manual || !body?.deposits?.gateway || !body?.withdrawals) {
+    return res.status(400).json({ error: 'Invalid payment settings payload' });
+  }
+  res.json(savePaymentSettings(body));
+});
+
+/** @deprecated Use /api/admin/payment/settings */
+app.get('/api/admin/deposit/settings', requireAdmin, requireAdminPermission('payment_settings'), (_req, res) => {
+  res.json(getDepositSettingsFromDb());
+});
+
+/** @deprecated Use PUT /api/admin/payment/settings */
+app.put('/api/admin/deposit/settings', requireAdmin, requireAdminPermission('payment_settings'), (req, res) => {
+  const body = req.body as DepositSettings;
+  if (!body?.manual || !body?.gateway) {
+    return res.status(400).json({ error: 'Invalid deposit settings payload' });
+  }
+  const current = ensurePaymentSettings();
+  res.json(savePaymentSettings({ ...current, deposits: body }).deposits);
+});
+
+app.get('/api/admin/deposits/requests', requireAdmin, requireAdminPermission('deposit_requests'), (req, res) => {
+  const status = String(req.query.status || 'all');
+  const search = String(req.query.search || '');
+  const page = Number(req.query.page) || 1;
+  const pageSize = Number(req.query.pageSize) || 10;
+  const valid = ['all', 'pending', 'approved', 'rejected'];
+  const filter = valid.includes(status) ? (status as 'all' | 'pending' | 'approved' | 'rejected') : 'all';
+  res.json(queryDepositRequests({ status: filter, search, page, pageSize }));
+});
+
+app.patch('/api/admin/deposits/:requestId/approve', requireAdmin, requireAdminPermission('deposit_requests'), (req, res) => {
+  const updated = approveDepositRequest(req.params.requestId, req.dbUser!.email);
+  if (!updated) return res.status(404).json({ error: 'Pending deposit request not found' });
+  res.json(updated);
+});
+
+app.patch('/api/admin/deposits/:requestId/reject', requireAdmin, requireAdminPermission('deposit_requests'), (req, res) => {
+  const reason = String(req.body?.reason ?? '').trim();
+  if (!reason) return res.status(400).json({ error: 'Rejection reason is required' });
+  if (reason.length > 500) {
+    return res.status(400).json({ error: 'Rejection reason must be 500 characters or less' });
+  }
+  const updated = rejectDepositRequest(req.params.requestId, reason, req.dbUser!.email);
+  if (!updated) return res.status(404).json({ error: 'Pending deposit request not found' });
+  res.json(updated);
+});
+
+app.get('/api/admin/tickets', requireAdmin, requireAdminPermission('support_tickets'), (req, res) => {
+  const status = String(req.query.status || 'all');
+  const search = String(req.query.search || '');
+  const page = Number(req.query.page) || 1;
+  const pageSize = Number(req.query.pageSize) || 10;
+  const valid = ['all', 'open', 'in_progress', 'resolved', 'closed'];
+  const filter = valid.includes(status)
+    ? (status as 'all' | 'open' | 'in_progress' | 'resolved' | 'closed')
+    : 'all';
+  res.json(querySupportTickets({ status: filter, search, page, pageSize }));
+});
+
+app.patch('/api/admin/tickets/:ticketId', requireAdmin, requireAdminPermission('support_tickets'), (req, res) => {
+  try {
+    const updated = updateSupportTicket(
+      req.params.ticketId,
+      req.body ?? {},
+      req.dbUser!.email
+    );
+    if (!updated) return res.status(404).json({ error: 'Ticket not found' });
+    res.json(updated);
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : 'Update failed' });
+  }
+});
+
+app.patch('/api/admin/inquiries/:id', requireAdmin, requireAdminPermission('inquiries'), (req, res) => {
   const { status } = req.body ?? {};
   let found: ContactInquiry | undefined;
   updateDb((db) => {
@@ -331,7 +554,7 @@ app.patch('/api/admin/inquiries/:id', requireAdmin, (req, res) => {
   res.json(found);
 });
 
-app.put('/api/admin/plans', requireAdmin, (req, res) => {
+app.put('/api/admin/plans', requireAdmin, requireAdminPermission('plans'), (req, res) => {
   const plans = req.body as InvestmentPlan[];
   if (!Array.isArray(plans)) return res.status(400).json({ error: 'Expected plans array' });
   updateDb((db) => {
@@ -340,7 +563,7 @@ app.put('/api/admin/plans', requireAdmin, (req, res) => {
   res.json(readDb().plans);
 });
 
-app.put('/api/admin/milestones', requireAdmin, (req, res) => {
+app.put('/api/admin/milestones', requireAdmin, requireAdminPermission('milestones'), (req, res) => {
   const milestones = req.body as MilestoneTier[];
   if (!Array.isArray(milestones)) return res.status(400).json({ error: 'Expected milestones array' });
   updateDb((db) => {
@@ -359,13 +582,13 @@ app.get('/api/kyc/history', requireAuth, (req, res) => {
   res.json(history);
 });
 
-app.patch('/api/admin/users/:userId/kyc/approve', requireAdmin, (req, res) => {
+app.patch('/api/admin/users/:userId/kyc/approve', requireAdmin, requireAdminPermission('kyc'), (req, res) => {
   const updated = approveLatestKycForUser(req.params.userId, req.dbUser!.email);
   if (!updated) return res.status(404).json({ error: 'No pending KYC submission found' });
   res.json(updated);
 });
 
-app.patch('/api/admin/users/:userId/kyc/reject', requireAdmin, (req, res) => {
+app.patch('/api/admin/users/:userId/kyc/reject', requireAdmin, requireAdminPermission('kyc'), (req, res) => {
   const reason = String(req.body?.reason ?? '').trim();
   if (!reason) {
     return res.status(400).json({ error: 'Rejection reason is required' });
@@ -378,7 +601,7 @@ app.patch('/api/admin/users/:userId/kyc/reject', requireAdmin, (req, res) => {
   res.json(updated);
 });
 
-app.get('/api/admin/kyc/submissions', requireAdmin, (req, res) => {
+app.get('/api/admin/kyc/submissions', requireAdmin, requireAdminPermission('kyc'), (req, res) => {
   const status = (String(req.query.status || 'all') as KycFilterStatus) || 'all';
   const search = String(req.query.search || '');
   const page = Number(req.query.page) || 1;
@@ -388,13 +611,13 @@ app.get('/api/admin/kyc/submissions', requireAdmin, (req, res) => {
   res.json(queryKycSubmissions({ status: filter, search, page, pageSize }));
 });
 
-app.patch('/api/admin/kyc/submissions/:submissionId/approve', requireAdmin, (req, res) => {
+app.patch('/api/admin/kyc/submissions/:submissionId/approve', requireAdmin, requireAdminPermission('kyc'), (req, res) => {
   const updated = approveKycSubmission(req.params.submissionId, req.dbUser!.email);
   if (!updated) return res.status(404).json({ error: 'Pending submission not found' });
   res.json(updated);
 });
 
-app.patch('/api/admin/kyc/submissions/:submissionId/reject', requireAdmin, (req, res) => {
+app.patch('/api/admin/kyc/submissions/:submissionId/reject', requireAdmin, requireAdminPermission('kyc'), (req, res) => {
   const reason = String(req.body?.reason ?? '').trim();
   if (!reason) {
     return res.status(400).json({ error: 'Rejection reason is required' });
@@ -407,7 +630,7 @@ app.patch('/api/admin/kyc/submissions/:submissionId/reject', requireAdmin, (req,
   res.json(updated);
 });
 
-app.patch('/api/admin/users/:userId/balance', requireAdmin, (req, res) => {
+app.patch('/api/admin/users/:userId/balance', requireAdmin, requireAdminPermission('users'), (req, res) => {
   const amount = Number(req.body?.amount);
   const note = String(req.body?.note || 'Admin balance adjustment');
   if (!Number.isFinite(amount) || amount === 0) {
@@ -429,7 +652,7 @@ app.patch('/api/admin/users/:userId/balance', requireAdmin, (req, res) => {
   res.json(updated);
 });
 
-app.patch('/api/admin/users/:userId/deactivated', requireAdmin, (req, res) => {
+app.patch('/api/admin/users/:userId/deactivated', requireAdmin, requireAdminPermission('users'), (req, res) => {
   const deactivated = !!req.body?.deactivated;
   const updated = mutateUser(req.params.userId, (u) => {
     u.isDeactivated = deactivated;
@@ -438,19 +661,19 @@ app.patch('/api/admin/users/:userId/deactivated', requireAdmin, (req, res) => {
   res.json(updated);
 });
 
-app.delete('/api/admin/users/:userId', requireAdmin, (req, res) => {
+app.delete('/api/admin/users/:userId', requireAdmin, requireAdminPermission('users'), (req, res) => {
   const { userId } = req.params;
   const db = readDb();
   const target = db.users.find((u) => u.id === userId);
   if (!target) return res.status(404).json({ error: 'User not found' });
-  if (isAdminUser(target)) return res.status(403).json({ error: 'Cannot delete admin account' });
+  if (target.role === 'admin') return res.status(403).json({ error: 'Cannot delete admin account' });
   updateDb((d) => {
     d.users = d.users.filter((u) => u.id !== userId);
   });
   res.json({ ok: true });
 });
 
-app.patch('/api/admin/withdrawals/:userId/:txId/approve', requireAdmin, (req, res) => {
+app.patch('/api/admin/withdrawals/:userId/:txId/approve', requireAdmin, requireAdminPermission('withdrawals'), (req, res) => {
   const updated = mutateUser(req.params.userId, (u) => {
     u.transactions = (u.transactions || []).map((tx) =>
       tx.id === req.params.txId && tx.type === 'withdrawal' && tx.status === 'pending'
@@ -462,7 +685,7 @@ app.patch('/api/admin/withdrawals/:userId/:txId/approve', requireAdmin, (req, re
   res.json(updated);
 });
 
-app.patch('/api/admin/withdrawals/:userId/:txId/reject', requireAdmin, (req, res) => {
+app.patch('/api/admin/withdrawals/:userId/:txId/reject', requireAdmin, requireAdminPermission('withdrawals'), (req, res) => {
   const dbUser = findDbUser(req.params.userId);
   if (!dbUser) return res.status(404).json({ error: 'User not found' });
   const tx = dbUser.transactions?.find((t) => t.id === req.params.txId && t.type === 'withdrawal');
@@ -479,7 +702,7 @@ app.patch('/api/admin/withdrawals/:userId/:txId/reject', requireAdmin, (req, res
   res.json(updated);
 });
 
-app.post('/api/admin/investments/assign', requireAdmin, (req, res) => {
+app.post('/api/admin/investments/assign', requireAdmin, requireAdminPermission('investments'), (req, res) => {
   const { userId, planId } = req.body ?? {};
   const plan = getPlanFromDb(String(planId));
   if (!plan) return res.status(400).json({ error: 'Plan not found' });
@@ -492,7 +715,7 @@ app.post('/api/admin/investments/assign', requireAdmin, (req, res) => {
   }
 });
 
-app.patch('/api/admin/users/:userId/milestones/:milestoneId', requireAdmin, (req, res) => {
+app.patch('/api/admin/users/:userId/milestones/:milestoneId', requireAdmin, requireAdminPermission('milestones'), (req, res) => {
   const status = req.body?.status as 'eligible' | 'fulfilled' | null;
   const updated = mutateUser(req.params.userId, (u) => {
     const next = { ...(u.milestoneFulfillment || {}) };
@@ -505,17 +728,20 @@ app.patch('/api/admin/users/:userId/milestones/:milestoneId', requireAdmin, (req
 });
 
 // Admin export/import full database snapshot (users public only on export)
-app.get('/api/admin/export', requireAdmin, (_req, res) => {
+app.get('/api/admin/export', requireAdmin, requireAdminPermission('users'), (_req, res) => {
   const db = readDb();
   res.json({
     users: db.users.map(toPublicUser),
     plans: db.plans,
     milestones: db.milestones,
     inquiries: db.inquiries,
+    depositSettings: db.depositSettings,
+    paymentSettings: db.paymentSettings,
+    depositRequests: db.depositRequests,
   });
 });
 
-app.post('/api/admin/import/users', requireAdmin, (req, res) => {
+app.post('/api/admin/import/users', requireAdmin, requireAdminPermission('users'), (req, res) => {
   const users = req.body?.users;
   if (!Array.isArray(users)) return res.status(400).json({ error: 'Expected { users: [] }' });
   updateDb((db) => {
@@ -545,7 +771,7 @@ if (serveStatic) {
 
 async function start() {
   await initDb();
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`Gaulaxmi API listening on http://localhost:${PORT}`);
   });
 }

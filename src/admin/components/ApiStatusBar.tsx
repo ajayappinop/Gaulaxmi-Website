@@ -8,7 +8,8 @@ const ENDPOINTS = [
   'GET /api/admin/inquiries',
   'PUT /api/admin/plans',
   'PUT /api/admin/milestones',
-  'PATCH KYC / withdrawals / balance',
+  'GET/PUT /api/admin/payment/settings',
+  'PATCH deposits / withdrawals / balance',
   'POST /api/admin/investments/assign',
 ];
 

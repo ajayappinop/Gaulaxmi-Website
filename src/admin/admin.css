@@ -70,3 +70,17 @@
 .admin-app .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
+
+.admin-sidebar-nav {
+  scrollbar-width: thin;
+  scrollbar-color: #d6d3d1 transparent;
+}
+
+.admin-sidebar-nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.admin-sidebar-nav::-webkit-scrollbar-thumb {
+  background-color: #d6d3d1;
+  border-radius: 9999px;
+}

@@ -1,42 +1,77 @@
-import { normalizeEmail } from './validation';
 import type { User } from './auth';
 import { api } from './apiClient';
+import {
+  isPanelAdminUser,
+  isSuperAdminUser,
+  SUPER_ADMIN_EMAILS,
+} from './adminPermissions';
 
 export type UserRole = 'admin' | 'member';
 
-/** Emails that always receive admin access (demo + primary admin) */
-export const ADMIN_EMAILS = ['admin@gaulaxmi.io', 'ajay@appinop.com'];
+export { SUPER_ADMIN_EMAILS, isSuperAdminUser };
 
-export function isAdminUser(
-  user: { email: string; role?: UserRole } | null | undefined
-): boolean {
-  if (!user) return false;
-  if (user.role === 'admin') return true;
-  return ADMIN_EMAILS.includes(normalizeEmail(user.email));
+export function isAdminUser(user: User | null | undefined): boolean {
+  return isPanelAdminUser(user);
 }
 
 export type AdminTabId =
   | 'overview'
   | 'users'
   | 'kyc'
+  | 'payment_settings'
+  | 'deposit_requests'
   | 'withdrawals'
   | 'transactions'
   | 'plans'
   | 'investments'
   | 'milestones'
-  | 'inquiries';
+  | 'inquiries'
+  | 'support_tickets'
+  | 'admins';
 
-export const ADMIN_NAV_ITEMS: { id: AdminTabId; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'users', label: 'Users' },
-  { id: 'kyc', label: 'KYC Queue' },
-  { id: 'withdrawals', label: 'Withdrawals' },
-  { id: 'transactions', label: 'Transactions' },
-  { id: 'plans', label: 'Investment Plans' },
-  { id: 'investments', label: 'Plan Purchases' },
-  { id: 'milestones', label: 'Milestones' },
-  { id: 'inquiries', label: 'Lead Inquiries' },
+export type AdminNavItem = { id: AdminTabId; label: string };
+
+export type AdminNavSection = {
+  section: string;
+  items: AdminNavItem[];
+};
+
+/** Sidebar structure with a dedicated Payments group */
+export const ADMIN_NAV_SECTIONS: AdminNavSection[] = [
+  {
+    section: 'Main',
+    items: [
+      { id: 'overview', label: 'Overview' },
+      { id: 'users', label: 'Users' },
+      { id: 'kyc', label: 'KYC Queue' },
+    ],
+  },
+  {
+    section: 'Payments',
+    items: [
+      { id: 'payment_settings', label: 'Payment settings' },
+      { id: 'deposit_requests', label: 'Deposit requests' },
+      { id: 'withdrawals', label: 'Withdrawal approvals' },
+      { id: 'transactions', label: 'Transactions' },
+    ],
+  },
+  {
+    section: 'Catalog & leads',
+    items: [
+      { id: 'plans', label: 'Investment Plans' },
+      { id: 'investments', label: 'Plan Purchases' },
+      { id: 'milestones', label: 'Milestones' },
+      { id: 'inquiries', label: 'Lead Inquiries' },
+    ],
+  },
+  {
+    section: 'Support',
+    items: [{ id: 'support_tickets', label: 'Help & support tickets' }],
+  },
 ];
+
+/** Flat list for mobile nav and lookups */
+export const ADMIN_NAV_ITEMS: AdminNavItem[] = ADMIN_NAV_SECTIONS.flatMap((s) => s.items);
 
 export function getMemberAppUrl(): string {
   if (typeof window !== 'undefined') {

@@ -4,8 +4,10 @@ import { api } from './apiClient';
 export const PLANS_STORAGE_KEY = 'gaulaxmi_plans';
 export const PLANS_UPDATED_EVENT = 'gaulaxmi-plans-updated';
 
-const MONTHS = 60;
-const MONTHLY_RATE = 0.05;
+export const PLAN_TENURE_MONTHS = 60;
+export const PLAN_MONTHLY_RATE = 0.05;
+const MONTHS = PLAN_TENURE_MONTHS;
+const MONTHLY_RATE = PLAN_MONTHLY_RATE;
 
 export const DEFAULT_PLANS: InvestmentPlan[] = [
   { id: 'starter', tier: 'Starter', amount: 100_000, monthlyReturn: 5_000, totalPayout: 300_000, totalEarnings: 400_000 },

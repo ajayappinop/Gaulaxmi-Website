@@ -1,7 +1,8 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { readDb } from '../db.js';
-import { isAdminUser, toPublicUser } from '../utils.js';
+import { toPublicUser } from '../utils.js';
+import { isPanelAdminUser } from '../../shared/adminPermissions.js';
 import type { DbUser, User } from '../../shared/types.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'gaulaxmi-dev-secret-change-in-production';
@@ -47,7 +48,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   requireAuth(req, res, () => {
-    if (!req.dbUser || !isAdminUser(req.dbUser)) {
+    if (!req.dbUser || !isPanelAdminUser(req.dbUser)) {
       return res.status(403).json({ error: 'Admin access required' });
     }
     next();

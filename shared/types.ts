@@ -1,4 +1,8 @@
+import type { AdminPermission, AdminStaffRole } from './adminPermissions.js';
+
 export type UserRole = 'admin' | 'member';
+
+export type { AdminPermission, AdminStaffRole } from './adminPermissions.js';
 
 export type KycStatus = 'not_started' | 'submitted' | 'verified' | 'rejected';
 
@@ -9,6 +13,126 @@ export interface Transaction {
   date: string;
   status: 'completed' | 'pending' | 'rejected';
   details?: string;
+  depositRequestId?: string;
+}
+
+export type DepositMode = 'manual' | 'gateway';
+
+export type DepositRequestStatus = 'pending' | 'approved' | 'rejected';
+
+export type DepositChannel = 'manual' | 'gateway';
+
+export interface ManualDepositConfig {
+  upiId: string;
+  accountName: string;
+  accountNumber: string;
+  ifsc: string;
+  bankName: string;
+  instructions: string;
+  /** UPI payment string used to render the QR code */
+  qrPayload: string;
+}
+
+export interface GatewayDepositConfig {
+  provider: 'razorpay' | 'cashfree' | 'payu' | 'other';
+  enabled: boolean;
+  keyId: string;
+  keySecret: string;
+  webhookSecret: string;
+  testMode: boolean;
+}
+
+export interface DepositSettings {
+  mode: DepositMode;
+  manual: ManualDepositConfig;
+  gateway: GatewayDepositConfig;
+  minAmount: number;
+  requireKyc: boolean;
+  updatedAt?: string;
+}
+
+export interface WithdrawalSettings {
+  enabled: boolean;
+  requireKyc: boolean;
+  minAmount: number;
+  maxAmountPerRequest: number;
+  /** All withdrawal requests need admin approval before payout */
+  adminApprovalRequired: boolean;
+  /** Days notice for capital withdrawal (shown to members) */
+  capitalNoticeDays: number;
+  /** Members can request profit withdrawals anytime when true */
+  profitWithdrawalAnytime: boolean;
+  memberInstructions: string;
+}
+
+/** Platform-wide payment rules for deposits and withdrawals */
+export interface PaymentSettings {
+  deposits: DepositSettings;
+  withdrawals: WithdrawalSettings;
+  updatedAt?: string;
+}
+
+/** Member-facing deposit configuration (no secrets). */
+export interface PublicDepositSettings {
+  mode: DepositMode;
+  manualEnabled: boolean;
+  gatewayEnabled: boolean;
+  manual: ManualDepositConfig;
+  gateway: {
+    provider: GatewayDepositConfig['provider'];
+    configured: boolean;
+    testMode: boolean;
+  };
+  minAmount: number;
+  requireKyc: boolean;
+}
+
+/** Member-facing withdrawal rules */
+export interface PublicWithdrawalSettings {
+  enabled: boolean;
+  requireKyc: boolean;
+  minAmount: number;
+  maxAmountPerRequest: number;
+  adminApprovalRequired: boolean;
+  capitalNoticeDays: number;
+  profitWithdrawalAnytime: boolean;
+  memberInstructions: string;
+}
+
+export interface PublicPaymentSettings {
+  deposits: PublicDepositSettings;
+  withdrawals: PublicWithdrawalSettings;
+}
+
+export interface DepositRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  amount: number;
+  channel: DepositChannel;
+  status: DepositRequestStatus;
+  transactionId: string;
+  utr?: string;
+  paymentNote?: string;
+  /** Base64 data URL of payment proof screenshot (manual deposits) */
+  paymentScreenshot?: string;
+  paymentScreenshotName?: string;
+  gatewayOrderId?: string;
+  submittedAt: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
+  reviewedBy?: string;
+}
+
+export interface AdminDepositRequestRow extends DepositRequest {}
+
+export interface PaginatedDepositRequests {
+  rows: AdminDepositRequestRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }
 
 export interface Investment {
@@ -95,6 +219,9 @@ export interface User {
   isDeactivated?: boolean;
   profileImage?: string;
   role?: UserRole;
+  /** `super_admin` — full access + team management; `staff` — permission-scoped */
+  adminRole?: AdminStaffRole;
+  adminPermissions?: AdminPermission[];
   milestoneFulfillment?: Record<string, 'eligible' | 'fulfilled'>;
 }
 
@@ -133,6 +260,42 @@ export interface ContactInquiry {
   message: string;
   status: InquiryStatus;
   createdAt: string;
+}
+
+export type SupportTicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+
+export type SupportTicketCategory =
+  | 'general'
+  | 'wallet'
+  | 'kyc'
+  | 'investment'
+  | 'deposit'
+  | 'withdrawal'
+  | 'technical';
+
+export interface SupportTicket {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  category: SupportTicketCategory;
+  subject: string;
+  message: string;
+  status: SupportTicketStatus;
+  createdAt: string;
+  updatedAt: string;
+  adminReply?: string;
+  repliedAt?: string;
+  repliedBy?: string;
+  resolvedAt?: string;
+}
+
+export interface PaginatedSupportTickets {
+  rows: SupportTicket[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }
 
 export interface AuthResponse {

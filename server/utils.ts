@@ -1,4 +1,5 @@
 import type { DbUser, User } from '../shared/types.js';
+import { isPanelAdminUser } from '../shared/adminPermissions.js';
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -13,10 +14,8 @@ export function toPublicUser(u: DbUser): User {
   return rest;
 }
 
-export function isAdminUser(u: Pick<User, 'email' | 'role'>): boolean {
-  if (u.role === 'admin') return true;
-  const adminEmails = ['admin@gaulaxmi.io', 'ajay@appinop.com'];
-  return adminEmails.includes(normalizeEmail(u.email));
+export function isAdminUser(u: Pick<User, 'email' | 'role' | 'adminRole' | 'adminPermissions'>): boolean {
+  return isPanelAdminUser(u);
 }
 
 export function walletAddress(): string {

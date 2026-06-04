@@ -10,12 +10,11 @@ export const adminBrand = {
 } as const;
 
 export const adminShell = {
-  root: 'admin-app min-h-screen bg-stone-50 text-stone-900 flex antialiased',
-  sidebar:
-    'hidden lg:flex flex-col w-72 shrink-0 border-r border-stone-200 bg-white shadow-sm p-5',
+  root: 'admin-app min-h-screen bg-stone-50 text-stone-900 antialiased',
+  mainWrap: 'flex flex-col flex-1 min-h-screen min-w-0 lg:pl-72',
   header:
-    'sticky top-0 z-30 border-b border-stone-200 bg-white/90 backdrop-blur-md px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-sm',
-  main: 'flex-1 p-4 sm:p-6 lg:p-8 overflow-auto max-w-7xl w-full',
+    'sticky top-0 z-20 border-b border-stone-200 bg-white/95 backdrop-blur-md px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-3 shadow-sm shrink-0',
+  main: 'flex-1 p-4 sm:p-6 lg:p-8 overflow-auto w-full max-w-7xl mx-auto',
 } as const;
 
 export const adminTypography = {
@@ -47,13 +46,13 @@ export const adminSelect =
   'bg-white border border-stone-200 rounded-lg px-3 py-2.5 text-sm text-stone-900 outline-none focus:border-[#7f4e1c]/50';
 
 export const adminBtnPrimary =
-  'bg-[#7f4e1c] hover:bg-[#633a11] text-white text-sm font-semibold rounded-xl transition shadow-sm';
+  'inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#7f4e1c] hover:bg-[#633a11] text-white text-sm font-semibold rounded-xl transition shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
 
 export const adminBtnSecondary =
-  'bg-[#f8f1e8] hover:bg-[#ede0cf] text-[#7b4b1d] text-sm font-semibold rounded-lg border border-[#d8cec1] transition';
+  'inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#f8f1e8] hover:bg-[#ede0cf] text-[#7b4b1d] text-sm font-semibold rounded-xl border border-[#d8cec1] transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
 
 export const adminNavActive =
-  'w-full text-left px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors bg-[#7f4e1c] text-white shadow-sm';
+  'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors bg-[#7f4e1c] text-white shadow-sm cursor-pointer';
 
 export const adminNavIdle =
-  'w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-colors text-stone-600 hover:bg-[#f8f1e8] hover:text-[#7f4e1c]';
+  'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors text-stone-600 hover:bg-[#f8f1e8] hover:text-[#7f4e1c] cursor-pointer';

@@ -1,13 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth, type User } from '../lib/auth';
 import {
-  ADMIN_NAV_ITEMS,
   type AdminTabId,
   isAdminUser,
   exportAccountsJson,
   importAccountsJson,
 } from '../lib/admin';
-import { buildMemberEntryUrl } from '../lib/appBridge';
 import {
   computeOverviewStats,
   flattenInvestments,
@@ -19,11 +17,29 @@ import { updateInquiryStatus, type ContactInquiry } from '../lib/inquiries';
 import { formatINR } from '../lib/plans';
 import { fetchAdminCatalog } from '../lib/adminData';
 import { api } from '../lib/apiClient';
+import { describeApiError, waitForApiHealth } from '../lib/apiReachable';
 import type { InvestmentPlan, MilestoneTier } from '../../shared/types';
 import { PlansAdminTab } from './tabs/PlansAdminTab';
 import { MilestonesAdminTab } from './tabs/MilestonesAdminTab';
 import { KycAdminTab } from './tabs/KycAdminTab';
-import { AdminTableToolbar } from './components/AdminTableToolbar';
+import { DepositRequestsAdminTab } from './tabs/DepositRequestsAdminTab';
+import { SupportTicketsAdminTab } from './tabs/SupportTicketsAdminTab';
+import { AdminTeamTab } from './tabs/AdminTeamTab';
+import {
+  canAccessAdminTab,
+  filterAdminNavSections,
+  firstAllowedAdminTab,
+  isSuperAdminUser,
+} from '../lib/adminPermissions';
+import { PaymentSettingsAdminTab } from './tabs/PaymentSettingsAdminTab';
+import { UsersListTab } from './tabs/UsersListTab';
+import { MemberDetailTab } from './tabs/MemberDetailTab';
+import { AdminTransactionDetailModal } from './components/AdminTransactionDetailModal';
+import { AdminWithdrawalDetailModal } from './components/AdminWithdrawalDetailModal';
+import { AdminInvestmentDetailModal } from './components/AdminInvestmentDetailModal';
+import { AdminDetailsButton } from './components/AdminDetailsButton';
+import { AdminTableToolbar, adminTableControlProps } from './components/AdminTableToolbar';
+import { memberHasActivityInRange, memberLatestActivityDate } from '../lib/tableControls';
 import {
   AdminTable,
   AdminTableCard,
@@ -44,8 +60,12 @@ import { useAdminTable } from './hooks/useAdminTable';
 import { AdminStatCard } from './components/AdminStatCard';
 import { AdminPageHeader } from './components/AdminPageHeader';
 import { AdminConfirmDialog } from './components/AdminConfirmDialog';
-import { adminNavActive, adminNavIdle, adminShell, adminTypography } from './adminTheme';
-import { ApiStatusBar } from './components/ApiStatusBar';
+import { AdminSidebar } from './components/AdminSidebar';
+import { adminShell, adminTypography } from './adminTheme';
+import { OverviewCharts } from './components/OverviewCharts';
+import { OverviewDateRangeFilter } from './components/OverviewDateRangeFilter';
+import { defaultLast30DaysFilter, getDateFilterLabel } from '../lib/tableControls';
+import { buildPeriodMetrics, type OverviewDateFilter } from '../lib/adminOverviewCharts';
 import { toast } from 'react-hot-toast';
 import logo from '../assets/Images/gaulaxmi-logo.png';
 import {
@@ -53,17 +73,16 @@ import {
   Users,
   ShieldCheck,
   ArrowUpRight,
+  ArrowDownRight,
   Receipt,
   TrendingUp,
   Mail,
-  LogOut,
-  ExternalLink,
   RefreshCw,
+  Menu,
   Download,
   Upload,
-  UserX,
-  UserCheck,
   Wallet,
+  LifeBuoy,
 } from 'lucide-react';
 
 const ADMIN_SESSION_KEY = 'gaulaxmi_admin_session';
@@ -74,15 +93,20 @@ export function AdminApp() {
   const [inquiries, setInquiries] = useState<ContactInquiry[]>([]);
   const [catalogPlans, setCatalogPlans] = useState<InvestmentPlan[]>([]);
   const [catalogMilestones, setCatalogMilestones] = useState<MilestoneTier[]>([]);
-  const [apiConnected, setApiConnected] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [memberDetailId, setMemberDetailId] = useState<string | null>(null);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [balanceAdjust, setBalanceAdjust] = useState({ amount: '', note: '' });
   const [adminUnlocked, setAdminUnlocked] = useState(
     () => localStorage.getItem(ADMIN_SESSION_KEY) === '1'
   );
 
   const isAdminSession = auth.isLoggedIn && isAdminUser(auth.user) && adminUnlocked;
+
+  const navSections = useMemo(
+    () => filterAdminNavSections(auth.user),
+    [auth.user]
+  );
 
   const members = useMemo(() => getMemberAccounts(auth.allUsers), [auth.allUsers]);
   const [serverStats, setServerStats] = useState<ReturnType<typeof computeOverviewStats> | null>(null);
@@ -95,6 +119,13 @@ export function AdminApp() {
   const refreshAll = async () => {
     setSyncing(true);
     try {
+      const apiUp = await waitForApiHealth();
+      if (!apiUp) {
+        toast.error(
+          'API is not running on port 4000. Use npm run dev:admin or npm run dev:all from the project folder.'
+        );
+        return;
+      }
       await auth.refreshUsers();
       const [catalog, apiStats] = await Promise.all([fetchAdminCatalog(), api.getAdminStats()]);
       setCatalogPlans(catalog.plans);
@@ -107,15 +138,15 @@ export function AdminApp() {
         pendingKyc: apiStats.pendingKyc,
         verifiedKyc: apiStats.verifiedKyc,
         pendingWithdrawals: apiStats.pendingWithdrawals,
+        pendingDeposits: apiStats.pendingDeposits,
         totalWalletBalance: apiStats.totalWalletBalance,
         totalInvested: apiStats.totalInvested,
         newInquiries: apiStats.newInquiries,
         totalInquiries: apiStats.totalInquiries,
+        openSupportTickets: apiStats.openSupportTickets ?? 0,
       });
-      setApiConnected(true);
-    } catch {
-      setApiConnected(false);
-      toast.error('Could not reach API. Run npm run dev:api (port 4000).');
+    } catch (err) {
+      toast.error(describeApiError(err));
     } finally {
       setSyncing(false);
     }
@@ -133,7 +164,27 @@ export function AdminApp() {
     }
   }, [auth.loading, auth.isLoggedIn, auth.user]);
 
-  const selectedUser = members.find((u) => u.id === selectedUserId) ?? null;
+  useEffect(() => {
+    if (!isAdminSession || !auth.user) return;
+    if (!canAccessAdminTab(auth.user, tab)) {
+      setTab(firstAllowedAdminTab(auth.user));
+    }
+  }, [tab, isAdminSession, auth.user]);
+
+  useEffect(() => {
+    if (tab !== 'users') setMemberDetailId(null);
+  }, [tab]);
+
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [tab]);
+
+  const memberDetailUser = members.find((u) => u.id === memberDetailId) ?? null;
+
+  const openMemberDetail = useCallback((userId: string) => {
+    setTab('users');
+    setMemberDetailId(userId);
+  }, []);
 
   const handleAdminLogin = async (email: string, password: string) => {
     const result = await auth.login(email, password);
@@ -143,7 +194,9 @@ export function AdminApp() {
     }
     if (!isAdminUser(result.user)) {
       auth.logout();
-      toast.error('This account does not have admin access.');
+      toast.error(
+        'This account does not have admin access. Contact the super admin to assign permissions.'
+      );
       return;
     }
     localStorage.setItem(ADMIN_SESSION_KEY, '1');
@@ -164,135 +217,92 @@ export function AdminApp() {
 
   return (
     <div className={adminShell.root}>
-      <aside className={adminShell.sidebar}>
-        <div className="mb-6 pb-5 border-b border-stone-100">
-          <div className="flex items-center gap-3">
-            <img src={logo} alt="Gaulaxmi" className="h-11 w-11 object-contain shrink-0" />
-            <div className="min-w-0">
-              <p className={adminTypography.brandTitle}>Gaulaxmi</p>
-              <p className={`${adminTypography.brandEyebrow} mt-0.5`}>Admin Console</p>
-            </div>
-          </div>
-        </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto scrollbar-none">
-          {ADMIN_NAV_ITEMS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setTab(item.id)}
-              className={tab === item.id ? adminNavActive : adminNavIdle}
-            >
-              {item.label}
-              {item.id === 'kyc' && stats.pendingKyc > 0 && (
-                <span className={`ml-2 ${adminTypography.navBadge} bg-red-500 text-white`}>
-                  {stats.pendingKyc}
-                </span>
-              )}
-              {item.id === 'withdrawals' && stats.pendingWithdrawals > 0 && (
-                <span className={`ml-2 ${adminTypography.navBadge} bg-amber-100 text-amber-800`}>
-                  {stats.pendingWithdrawals}
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
-        <div className="pt-4 border-t border-stone-100 space-y-2">
-          <a
-            href={buildMemberEntryUrl()}
-            className="flex items-center gap-2 text-xs text-stone-500 hover:text-[#7f4e1c] px-2 py-2 rounded-lg hover:bg-[#f8f1e8] transition"
-          >
-            <ExternalLink className="w-3.5 h-3.5" /> Member site
-          </a>
-          <button
-            type="button"
-            onClick={handleAdminLogout}
-            className="w-full flex items-center gap-2 text-sm text-stone-500 hover:text-red-600 hover:bg-red-50 px-3 py-2.5 rounded-xl transition"
-          >
-            <LogOut className="w-4 h-4" /> Sign out
-          </button>
-        </div>
-      </aside>
+      <AdminSidebar
+        tab={tab}
+        stats={stats}
+        navSections={navSections}
+        adminEmail={auth.user?.email}
+        onSelectTab={setTab}
+        onLogout={handleAdminLogout}
+        mobileOpen={mobileNavOpen}
+        onMobileOpenChange={setMobileNavOpen}
+      />
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className={adminShell.mainWrap}>
         <header className={adminShell.header}>
-          <div className="flex items-center gap-2 lg:hidden min-w-0">
-            <img src={logo} alt="Gaulaxmi" className="h-8 w-8 object-contain shrink-0" />
-            <span className="font-display text-sm font-bold text-primary truncate">Admin</span>
-          </div>
-          <div className="lg:hidden flex gap-1 overflow-x-auto scrollbar-none flex-1">
-            {ADMIN_NAV_ITEMS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setTab(item.id)}
-                className={`shrink-0 px-3 py-2 rounded-lg text-sm font-semibold ${
-                  tab === item.id ? 'bg-[#7f4e1c] text-white' : 'bg-stone-100 text-stone-600'
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-          <div className="hidden lg:flex items-center gap-2 min-w-0">
-            <img src={logo} alt="Gaulaxmi" className="h-7 w-7 object-contain shrink-0 lg:hidden" />
-            <p className="text-sm text-stone-500">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen(true)}
+              className="lg:hidden shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-xl border border-stone-200 bg-white text-stone-700 hover:bg-stone-50 cursor-pointer"
+              aria-label="Open navigation menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <img src={logo} alt="Gaulaxmi" className="h-8 w-8 object-contain shrink-0 lg:hidden" />
+            <div className="min-w-0 hidden sm:block lg:hidden">
+              <p className="font-display text-sm font-bold text-primary truncate">Gaulaxmi Admin</p>
+            </div>
+            <p className="hidden lg:block text-sm text-stone-500 truncate">
               Signed in as <span className="text-stone-900 font-medium">{auth.user?.email}</span>
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void refreshAll()}
-              disabled={syncing}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-stone-100 hover:bg-stone-200 text-sm font-semibold disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} /> Refresh
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => void refreshAll()}
+            disabled={syncing}
+            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-stone-100 hover:bg-stone-200 text-sm font-semibold text-stone-700 disabled:opacity-50 cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Refresh</span>
+          </button>
         </header>
 
         <main className={adminShell.main}>
-          <ApiStatusBar
-            connected={apiConnected}
-            loading={syncing}
-            planCount={catalogPlans.length}
-            milestoneCount={catalogMilestones.length}
-            memberCount={members.length}
-          />
           <DataSyncBanner users={auth.allUsers} onImported={() => void refreshAll()} />
 
           {tab === 'overview' && (
-            <OverviewTab stats={stats} members={members} plans={catalogPlans} onNavigate={setTab} />
-          )}
-
-          {tab === 'users' && (
-            <UsersTab
+            <OverviewTab
+              stats={stats}
               members={members}
-              selectedUser={selectedUser}
-              onSelectUser={setSelectedUserId}
-              balanceAdjust={balanceAdjust}
-              onBalanceAdjustChange={setBalanceAdjust}
-              onAdjustBalance={async (userId, amount, note) => {
-                await auth.adminAdjustBalance(userId, amount, note);
-                await refreshAll();
-                toast.success('Balance updated');
-              }}
-              onDeactivate={async (userId, v) => {
-                await auth.adminSetDeactivated(userId, v);
-                await refreshAll();
-                toast.success(v ? 'User deactivated' : 'User reactivated');
-              }}
-              onRemove={async (userId) => {
-                await auth.adminRemoveUser(userId);
-                setSelectedUserId(null);
-                await refreshAll();
-                toast.success('User removed');
-              }}
+              users={auth.allUsers}
+              inquiries={inquiries}
+              plans={catalogPlans}
+              onNavigate={setTab}
+              onViewMember={openMemberDetail}
             />
           )}
 
+          {tab === 'users' &&
+            (memberDetailUser ? (
+              <MemberDetailTab
+                user={memberDetailUser}
+                onBack={() => setMemberDetailId(null)}
+                balanceAdjust={balanceAdjust}
+                onBalanceAdjustChange={setBalanceAdjust}
+                onAdjustBalance={async (userId, amount, note) => {
+                  await auth.adminAdjustBalance(userId, amount, note);
+                  await refreshAll();
+                  toast.success('Balance updated');
+                }}
+                onDeactivate={async (userId, v) => {
+                  await auth.adminSetDeactivated(userId, v);
+                  await refreshAll();
+                  toast.success(v ? 'User deactivated' : 'User reactivated');
+                }}
+                onRemove={async (userId) => {
+                  await auth.adminRemoveUser(userId);
+                  await refreshAll();
+                  toast.success('User removed');
+                }}
+              />
+            ) : (
+              <UsersListTab members={members} onViewMember={openMemberDetail} />
+            ))}
+
           {tab === 'kyc' && (
             <KycAdminTab
+              onViewMember={openMemberDetail}
               onApprove={async (submissionId) => {
                 await auth.adminApproveKycSubmission(submissionId);
                 await refreshAll();
@@ -306,9 +316,28 @@ export function AdminApp() {
             />
           )}
 
+          {tab === 'payment_settings' && <PaymentSettingsAdminTab />}
+
+          {tab === 'deposit_requests' && (
+            <DepositRequestsAdminTab
+              onViewMember={openMemberDetail}
+              onApprove={async (requestId) => {
+                await auth.adminApproveDeposit(requestId);
+                await refreshAll();
+                toast.success('Deposit approved — wallet credited');
+              }}
+              onReject={async (requestId, reason) => {
+                await auth.adminRejectDeposit(requestId, reason);
+                await refreshAll();
+                toast.success('Deposit rejected');
+              }}
+            />
+          )}
+
           {tab === 'withdrawals' && (
             <WithdrawalsTab
               rows={getPendingWithdrawals(auth.allUsers)}
+              onViewMember={openMemberDetail}
               onApprove={async (userId, txId) => {
                 await auth.adminApproveWithdrawal(userId, txId);
                 await refreshAll();
@@ -323,7 +352,12 @@ export function AdminApp() {
           )}
 
           {tab === 'transactions' && (
-            <TransactionsTab rows={flattenTransactions(auth.allUsers)} />
+            <TransactionsTab
+              rows={flattenTransactions(auth.allUsers).filter(
+                (t) => t.type === 'deposit' || t.type === 'withdrawal'
+              )}
+              onViewMember={openMemberDetail}
+            />
           )}
 
           {tab === 'plans' && (
@@ -336,6 +370,7 @@ export function AdminApp() {
               members={getMemberAccounts(auth.allUsers)}
               plans={catalogPlans}
               onRefresh={refreshAll}
+              onViewMember={openMemberDetail}
             />
           )}
 
@@ -345,6 +380,7 @@ export function AdminApp() {
               milestones={catalogMilestones}
               onSetFulfillment={auth.adminSetMilestoneFulfillment}
               onRefresh={refreshAll}
+              onViewMember={openMemberDetail}
             />
           )}
 
@@ -358,6 +394,14 @@ export function AdminApp() {
               }}
             />
           )}
+
+          {tab === 'support_tickets' && (
+            <SupportTicketsAdminTab onViewMember={openMemberDetail} />
+          )}
+
+          {tab === 'admins' && auth.user && isSuperAdminUser(auth.user) && (
+            <AdminTeamTab currentUserId={auth.user.id} />
+          )}
         </main>
       </div>
     </div>
@@ -369,8 +413,10 @@ function AdminLoginForm({ onLogin }: { onLogin: (email: string, pass: string) =>
   const [password, setPassword] = useState('');
 
   return (
-    <div className={`${adminShell.root} items-center justify-center p-4 bg-gradient-warm`}>
-      <div className="w-full max-w-md bg-white border border-stone-200 rounded-3xl p-8 shadow-soft">
+    <div
+      className={`${adminShell.root} flex min-h-screen min-h-[100dvh] w-full items-center justify-center p-4 sm:p-6 bg-gradient-warm`}
+    >
+      <div className="w-full max-w-md mx-auto bg-white border border-stone-200 rounded-3xl p-8 sm:p-10 shadow-soft">
         <div className="flex flex-col items-center text-center mb-6">
           <img src={logo} alt="Gaulaxmi" className="h-16 w-16 object-contain mb-3" />
           <p className={`${adminTypography.brandEyebrow} mb-1`}>Gaulaxmi</p>
@@ -487,14 +533,77 @@ function DataSyncBanner({ users, onImported }: { users: User[]; onImported: () =
 function OverviewTab({
   stats,
   members,
+  users,
+  inquiries,
   plans,
   onNavigate,
+  onViewMember,
 }: {
   stats: ReturnType<typeof computeOverviewStats>;
   members: User[];
+  users: User[];
+  inquiries: ContactInquiry[];
   plans: InvestmentPlan[];
   onNavigate: (t: AdminTabId) => void;
+  onViewMember: (userId: string) => void;
 }) {
+  const [overviewDateFilter, setOverviewDateFilter] = useState<OverviewDateFilter>(
+    defaultLast30DaysFilter
+  );
+
+  const periodKpis = useMemo(() => {
+    const members = getMemberAccounts(users);
+    return {
+      metrics: buildPeriodMetrics(members, inquiries, overviewDateFilter),
+      rangeLabel: getDateFilterLabel(overviewDateFilter),
+    };
+  }, [users, inquiries, overviewDateFilter]);
+
+  const periodCards = [
+    {
+      label: 'Transactions',
+      value: String(periodKpis.metrics.txCount),
+      icon: Receipt,
+      tone: 'brown' as const,
+      tab: 'transactions' as const,
+    },
+    {
+      label: 'Deposits',
+      value: formatINR(periodKpis.metrics.deposits),
+      icon: ArrowDownRight,
+      tone: 'emerald' as const,
+      tab: 'transactions' as const,
+    },
+    {
+      label: 'Withdrawals',
+      value: formatINR(periodKpis.metrics.withdrawals),
+      icon: ArrowUpRight,
+      tone: 'rose' as const,
+      tab: 'transactions' as const,
+    },
+    {
+      label: 'Investments (tx)',
+      value: formatINR(periodKpis.metrics.investments),
+      icon: TrendingUp,
+      tone: 'gold' as const,
+      tab: 'investments' as const,
+    },
+    {
+      label: 'Plan purchases',
+      value: String(periodKpis.metrics.investmentCount),
+      icon: TrendingUp,
+      tone: 'violet' as const,
+      tab: 'investments' as const,
+    },
+    {
+      label: 'Lead inquiries',
+      value: String(periodKpis.metrics.inquiryCount),
+      icon: Mail,
+      tone: 'sky' as const,
+      tab: 'inquiries' as const,
+    },
+  ];
+
   const memberTable = useAdminTable({
     items: members,
     pageSize: 8,
@@ -509,6 +618,8 @@ function OverviewTab({
       if (f === 'kyc_verified') return m.kycStatus === 'verified' || !!m.isKycVerified;
       return true;
     },
+    dateFilterFn: (m, start, end) => memberHasActivityInRange(m, start, end),
+    getSortValue: (m) => memberLatestActivityDate(m) ?? m.name.toLowerCase(),
   });
 
   const cards = [
@@ -527,6 +638,15 @@ function OverviewTab({
       tab: 'kyc' as const,
       tone: 'amber' as const,
       alert: stats.pendingKyc > 0,
+      alertLabel: 'Review',
+    },
+    {
+      label: 'Pending deposits',
+      value: stats.pendingDeposits,
+      icon: ArrowDownRight,
+      tab: 'deposit_requests' as const,
+      tone: 'emerald' as const,
+      alert: stats.pendingDeposits > 0,
       alertLabel: 'Review',
     },
     {
@@ -561,6 +681,15 @@ function OverviewTab({
       alert: stats.newInquiries > 0,
       alertLabel: 'New',
     },
+    {
+      label: 'Open support tickets',
+      value: stats.openSupportTickets,
+      icon: LifeBuoy,
+      tab: 'support_tickets' as const,
+      tone: 'violet' as const,
+      alert: stats.openSupportTickets > 0,
+      alertLabel: 'Reply',
+    },
   ];
 
   return (
@@ -570,21 +699,60 @@ function OverviewTab({
         subtitle="Platform health and queues requiring action"
         icon={LayoutDashboard}
       />
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {cards.map((c) => (
-          <div key={c.label}>
-            <AdminStatCard
-              label={c.label}
-              value={c.value}
-              icon={c.icon}
-              tone={c.tone}
-              alert={c.alert}
-              alertLabel={c.alertLabel}
-              onClick={() => onNavigate(c.tab)}
-            />
-          </div>
-        ))}
+
+      <OverviewDateRangeFilter value={overviewDateFilter} onChange={setOverviewDateFilter} />
+
+      <div className="space-y-3">
+        <div>
+          <h3 className={adminTypography.sectionTitle}>Platform status</h3>
+          <p className={adminTypography.meta}>Live queues and all-time totals (not filtered by date)</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {cards.map((c) => (
+            <div key={c.label}>
+              <AdminStatCard
+                label={c.label}
+                value={c.value}
+                icon={c.icon}
+                tone={c.tone}
+                alert={c.alert}
+                alertLabel={c.alertLabel}
+                onClick={() => onNavigate(c.tab)}
+              />
+            </div>
+          ))}
+        </div>
       </div>
+
+      <div className="space-y-3">
+        <div>
+          <h3 className={adminTypography.sectionTitle}>Key metrics</h3>
+          <p className={adminTypography.meta}>
+            Totals for <span className="font-semibold text-stone-700">{periodKpis.rangeLabel}</span>
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {periodCards.map((c) => (
+            <div key={c.label}>
+              <AdminStatCard
+                label={c.label}
+                value={c.value}
+                icon={c.icon}
+                tone={c.tone}
+                onClick={() => onNavigate(c.tab)}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <OverviewCharts
+        stats={stats}
+        users={users}
+        inquiries={inquiries}
+        dateFilter={overviewDateFilter}
+      />
+
       <div className="bg-gradient-to-r from-white via-[#faf7f2] to-white border border-[#e8dcc8] rounded-2xl p-5 shadow-sm">
         <h3 className={adminTypography.sectionTitle}>Investment tiers</h3>
         <p className={`${adminTypography.meta} mb-4`}>Member-facing plans on the website</p>
@@ -637,6 +805,7 @@ function OverviewTab({
             page={memberTable.page}
             totalPages={memberTable.totalPages}
             onPageChange={memberTable.setPage}
+            {...adminTableControlProps(memberTable)}
           />
         }
       >
@@ -655,7 +824,12 @@ function OverviewTab({
               memberTable.paginated.map((m) => (
                 <AdminTr key={m.id}>
                   <AdminTd>
-                    <AdminMemberCell name={m.name} sub={m.email} />
+                    <AdminMemberCell
+                      name={m.name}
+                      sub={m.email}
+                      userId={m.id}
+                      onViewMember={onViewMember}
+                    />
                   </AdminTd>
                   <AdminTd>
                     <AdminBadge tone={kycBadgeTone(m.kycStatus)}>
@@ -675,290 +849,18 @@ function OverviewTab({
   );
 }
 
-type MemberConfirmAction =
-  | { type: 'deactivate'; user: User }
-  | { type: 'reactivate'; user: User }
-  | { type: 'remove'; user: User };
-
-function UsersTab({
-  members,
-  selectedUser,
-  onSelectUser,
-  balanceAdjust,
-  onBalanceAdjustChange,
-  onAdjustBalance,
-  onDeactivate,
-  onRemove,
-}: {
-  members: User[];
-  selectedUser: User | null;
-  onSelectUser: (id: string | null) => void;
-  balanceAdjust: { amount: string; note: string };
-  onBalanceAdjustChange: (v: { amount: string; note: string }) => void;
-  onAdjustBalance: (userId: string, amount: number, note: string) => void;
-  onDeactivate: (userId: string, deactivated: boolean) => void | Promise<void>;
-  onRemove: (userId: string) => void | Promise<void>;
-}) {
-  const [confirmAction, setConfirmAction] = useState<MemberConfirmAction | null>(null);
-  const [confirmLoading, setConfirmLoading] = useState(false);
-
-  const handleConfirmAction = async () => {
-    if (!confirmAction) return;
-    setConfirmLoading(true);
-    try {
-      if (confirmAction.type === 'deactivate') {
-        await onDeactivate(confirmAction.user.id, true);
-      } else if (confirmAction.type === 'reactivate') {
-        await onDeactivate(confirmAction.user.id, false);
-      } else {
-        await onRemove(confirmAction.user.id);
-        if (selectedUser?.id === confirmAction.user.id) onSelectUser(null);
-      }
-      setConfirmAction(null);
-    } finally {
-      setConfirmLoading(false);
-    }
-  };
-
-  const table = useAdminTable({
-    items: members,
-    searchFn: (m, q) =>
-      m.name.toLowerCase().includes(q) ||
-      m.email.toLowerCase().includes(q) ||
-      m.id.toLowerCase().includes(q) ||
-      (m.phone || '').includes(q),
-    filterFn: (m, f) => {
-      if (f === 'active') return !m.isDeactivated;
-      if (f === 'deactivated') return !!m.isDeactivated;
-      if (f === 'kyc_submitted') return m.kycStatus === 'submitted';
-      if (f === 'kyc_verified') return m.kycStatus === 'verified' || !!m.isKycVerified;
-      if (f === 'kyc_rejected') return m.kycStatus === 'rejected';
-      if (f === 'kyc_none') return !m.kycStatus || m.kycStatus === 'not_started';
-      return true;
-    },
-  });
-
-  return (
-    <div className="space-y-4">
-      <AdminPageHeader title="Users" icon={Users} />
-      <AdminTableToolbar
-        searchInput={table.searchInput}
-        onSearchChange={table.setSearchInput}
-        searchPlaceholder="Search name, email, id, phone…"
-        filters={[
-          { id: 'all', label: 'All' },
-          { id: 'active', label: 'Active' },
-          { id: 'deactivated', label: 'Deactivated' },
-          { id: 'kyc_submitted', label: 'KYC pending' },
-          { id: 'kyc_verified', label: 'KYC verified' },
-          { id: 'kyc_rejected', label: 'KYC rejected' },
-        ]}
-        filter={table.filter}
-        onFilterChange={table.setFilter}
-        total={table.total}
-        page={table.page}
-        totalPages={table.totalPages}
-        onPageChange={table.setPage}
-      />
-      <div className="grid lg:grid-cols-5 gap-4">
-        <div className="lg:col-span-3">
-          <AdminTableCard>
-            <AdminTable>
-              <AdminThead>
-                <tr>
-                  <AdminTh>Member</AdminTh>
-                  <AdminTh>KYC</AdminTh>
-                  <AdminTh align="right">Balance</AdminTh>
-                </tr>
-              </AdminThead>
-              <AdminTbody>
-                {table.paginated.length === 0 ? (
-                  <AdminEmptyRow colSpan={3} />
-                ) : (
-                  table.paginated.map((m) => (
-                    <AdminTr
-                      key={m.id}
-                      onClick={() => onSelectUser(m.id)}
-                      selected={selectedUser?.id === m.id}
-                    >
-                      <AdminTd>
-                        <AdminMemberCell name={m.name} sub={m.email} />
-                      </AdminTd>
-                      <AdminTd>
-                        <AdminBadge tone={kycBadgeTone(m.kycStatus)}>
-                          {(m.kycStatus || 'none').replace('_', ' ')}
-                        </AdminBadge>
-                      </AdminTd>
-                      <AdminTd align="right">
-                        <AdminMoney amount={formatINR(m.balance)} />
-                      </AdminTd>
-                    </AdminTr>
-                  ))
-                )}
-              </AdminTbody>
-            </AdminTable>
-          </AdminTableCard>
-        </div>
-        <div className="lg:col-span-2 bg-white border border-stone-200 rounded-xl p-5 min-h-[200px]">
-          {selectedUser ? (
-            <div className="space-y-4 text-sm">
-              <div>
-                <h3 className={adminTypography.sectionTitle}>{selectedUser.name}</h3>
-                <p className="text-stone-500">{selectedUser.email}</p>
-                <p className="text-xs text-stone-500 mt-1 font-mono">{selectedUser.id}</p>
-              </div>
-              <dl className="grid grid-cols-2 gap-2 text-xs">
-                <dt className="text-stone-500">Balance</dt>
-                <dd className="font-mono text-stone-900">{formatINR(selectedUser.balance)}</dd>
-                <dt className="text-stone-500">Investments</dt>
-                <dd>{selectedUser.investments?.length || 0}</dd>
-                <dt className="text-stone-500">Referrals</dt>
-                <dd>{selectedUser.referrals?.length || 0}</dd>
-                <dt className="text-stone-500">Status</dt>
-                <dd>{selectedUser.isDeactivated ? 'Deactivated' : 'Active'}</dd>
-              </dl>
-              <div className="border-t border-stone-200 pt-4 space-y-2">
-                <p className="text-xs font-semibold text-stone-500 uppercase">Adjust balance</p>
-                <input
-                  type="number"
-                  placeholder="Amount (+ credit, − debit)"
-                  value={balanceAdjust.amount}
-                  onChange={(e) => onBalanceAdjustChange({ ...balanceAdjust, amount: e.target.value })}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-stone-900 text-sm"
-                />
-                <input
-                  placeholder="Note"
-                  value={balanceAdjust.note}
-                  onChange={(e) => onBalanceAdjustChange({ ...balanceAdjust, note: e.target.value })}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-stone-900 text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const amt = Number(balanceAdjust.amount);
-                    if (!amt) return toast.error('Enter an amount');
-                    onAdjustBalance(selectedUser.id, amt, balanceAdjust.note || 'Admin adjustment');
-                    onBalanceAdjustChange({ amount: '', note: '' });
-                  }}
-                  className="w-full py-2 rounded-lg bg-[#7f4e1c] hover:bg-[#633a11] text-white font-semibold text-xs"
-                >
-                  Apply adjustment
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setConfirmAction(
-                      selectedUser.isDeactivated
-                        ? { type: 'reactivate', user: selectedUser }
-                        : { type: 'deactivate', user: selectedUser }
-                    )
-                  }
-                  className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border transition ${
-                    selectedUser.isDeactivated
-                      ? 'bg-green-50 text-green-800 border-green-200 hover:bg-green-100'
-                      : 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100'
-                  }`}
-                >
-                  {selectedUser.isDeactivated ? (
-                    <>
-                      <UserCheck className="w-4 h-4" /> Reactivate
-                    </>
-                  ) : (
-                    <>
-                      <UserX className="w-4 h-4" /> Deactivate
-                    </>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmAction({ type: 'remove', user: selectedUser })}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 text-sm font-semibold transition"
-                >
-                  Remove user
-                </button>
-              </div>
-            </div>
-          ) : (
-            <p className="text-stone-500 text-sm">Select a member to view details and actions.</p>
-          )}
-        </div>
-      </div>
-
-      <AdminConfirmDialog
-        open={confirmAction?.type === 'deactivate'}
-        title="Deactivate member?"
-        description={`This will lock ${confirmAction?.user.name ?? 'this member'} out of investing and withdrawals until reactivated.`}
-        details={
-          <>
-            <p>
-              <strong className="text-stone-800">{confirmAction?.user.email}</strong>
-            </p>
-            <p className="mt-2">Their wallet balance, investments, and KYC records stay in the system.</p>
-          </>
-        }
-        confirmLabel="Yes, deactivate"
-        variant="warning"
-        loading={confirmLoading}
-        onConfirm={() => void handleConfirmAction()}
-        onCancel={() => !confirmLoading && setConfirmAction(null)}
-      />
-
-      <AdminConfirmDialog
-        open={confirmAction?.type === 'reactivate'}
-        title="Reactivate member?"
-        description={`Restore full access for ${confirmAction?.user.name ?? 'this member'}.`}
-        details={
-          <>
-            <p>
-              <strong className="text-stone-800">{confirmAction?.user.email}</strong>
-            </p>
-            <p className="mt-2">They can sign in, invest, and request withdrawals again.</p>
-          </>
-        }
-        confirmLabel="Yes, reactivate"
-        variant="success"
-        loading={confirmLoading}
-        onConfirm={() => void handleConfirmAction()}
-        onCancel={() => !confirmLoading && setConfirmAction(null)}
-      />
-
-      <AdminConfirmDialog
-        open={confirmAction?.type === 'remove'}
-        title="Remove member permanently?"
-        description="This cannot be undone. All account data for this member will be deleted from the server."
-        details={
-          confirmAction?.type === 'remove' ? (
-            <>
-              <p>
-                <strong className="text-stone-800">{confirmAction.user.name}</strong>
-                <br />
-                <span className="text-stone-500">{confirmAction.user.email}</span>
-              </p>
-              <p className="mt-2 font-mono text-xs text-stone-500">ID: {confirmAction.user.id}</p>
-            </>
-          ) : null
-        }
-        confirmLabel="Yes, remove permanently"
-        variant="danger"
-        loading={confirmLoading}
-        onConfirm={() => void handleConfirmAction()}
-        onCancel={() => !confirmLoading && setConfirmAction(null)}
-      />
-    </div>
-  );
-}
-
 function WithdrawalsTab({
   rows,
+  onViewMember,
   onApprove,
   onReject,
 }: {
   rows: ReturnType<typeof getPendingWithdrawals>;
+  onViewMember: (userId: string) => void;
   onApprove: (userId: string, txId: string) => void;
   onReject: (userId: string, txId: string) => void;
 }) {
+  const [detailRow, setDetailRow] = useState<(typeof rows)[0] | null>(null);
   const table = useAdminTable({
     items: rows,
     searchFn: (r, q) =>
@@ -971,6 +873,7 @@ function WithdrawalsTab({
       if (f === 'low') return r.tx.amount < 50000;
       return true;
     },
+    getItemDate: (r) => r.tx.date,
   });
 
   return (
@@ -991,6 +894,7 @@ function WithdrawalsTab({
         page={table.page}
         totalPages={table.totalPages}
         onPageChange={table.setPage}
+        {...adminTableControlProps(table)}
       />
       {rows.length === 0 ? (
         <p className="text-stone-500 text-sm">No pending withdrawal requests.</p>
@@ -1011,7 +915,12 @@ function WithdrawalsTab({
               {table.paginated.map((r) => (
                 <AdminTr key={r.tx.id}>
                   <AdminTd>
-                    <AdminMemberCell name={r.userName} sub={r.userEmail} />
+                    <AdminMemberCell
+                      name={r.userName}
+                      sub={r.userEmail}
+                      userId={r.userId}
+                      onViewMember={onViewMember}
+                    />
                   </AdminTd>
                   <AdminTd className="text-stone-500 text-xs whitespace-nowrap">
                     {new Date(r.tx.date).toLocaleString()}
@@ -1021,6 +930,7 @@ function WithdrawalsTab({
                   </AdminTd>
                   <AdminTd align="right">
                     <AdminRowActions>
+                      <AdminDetailsButton onClick={() => setDetailRow(r)} />
                       <AdminActionLink variant="approve" onClick={() => onApprove(r.userId, r.tx.id)}>
                         Approve
                       </AdminActionLink>
@@ -1035,15 +945,25 @@ function WithdrawalsTab({
           </AdminTable>
         </AdminTableCard>
       )}
+      {detailRow && (
+        <AdminWithdrawalDetailModal
+          row={detailRow}
+          onClose={() => setDetailRow(null)}
+          onViewMember={onViewMember}
+        />
+      )}
     </div>
   );
 }
 
 function TransactionsTab({
   rows,
+  onViewMember,
 }: {
   rows: ReturnType<typeof flattenTransactions>;
+  onViewMember: (userId: string) => void;
 }) {
+  const [detailRow, setDetailRow] = useState<(typeof rows)[0] | null>(null);
   const table = useAdminTable({
     items: rows,
     searchFn: (r, q) =>
@@ -1053,15 +973,20 @@ function TransactionsTab({
       r.status.toLowerCase().includes(q) ||
       r.id.toLowerCase().includes(q),
     filterFn: (r, f) => {
-      if (f === 'deposit' || f === 'withdrawal' || f === 'investment') return r.type === f;
+      if (f === 'deposit' || f === 'withdrawal') return r.type === f;
       if (f === 'completed' || f === 'pending' || f === 'rejected') return r.status === f;
       return true;
     },
+    getItemDate: (r) => r.date,
   });
 
   return (
     <div className="space-y-4">
-      <AdminPageHeader title="All transactions" icon={Receipt} />
+      <AdminPageHeader
+        title="Transaction history"
+        subtitle="Deposits and withdrawals only — use Deposit requests and Withdrawal approvals for pending review"
+        icon={Receipt}
+      />
       <AdminTableToolbar
         searchInput={table.searchInput}
         onSearchChange={table.setSearchInput}
@@ -1070,9 +995,9 @@ function TransactionsTab({
           { id: 'all', label: 'All' },
           { id: 'deposit', label: 'Deposits' },
           { id: 'withdrawal', label: 'Withdrawals' },
-          { id: 'investment', label: 'Investments' },
           { id: 'pending', label: 'Pending' },
           { id: 'completed', label: 'Completed' },
+          { id: 'rejected', label: 'Rejected' },
         ]}
         filter={table.filter}
         onFilterChange={table.setFilter}
@@ -1080,6 +1005,7 @@ function TransactionsTab({
         page={table.page}
         totalPages={table.totalPages}
         onPageChange={table.setPage}
+        {...adminTableControlProps(table)}
       />
       <AdminTableCard>
         <AdminTable minWidth="min-w-[720px]">
@@ -1090,16 +1016,22 @@ function TransactionsTab({
               <AdminTh>Status</AdminTh>
               <AdminTh align="right">Amount</AdminTh>
               <AdminTh>Date</AdminTh>
+              <AdminTh align="right">Actions</AdminTh>
             </tr>
           </AdminThead>
           <AdminTbody>
             {table.paginated.length === 0 ? (
-              <AdminEmptyRow colSpan={5} message="No transactions match your filters." />
+              <AdminEmptyRow colSpan={6} message="No transactions match your filters." />
             ) : (
               table.paginated.map((r) => (
                 <AdminTr key={`${r.userId}-${r.id}`}>
                   <AdminTd>
-                    <AdminMemberCell name={r.userName} sub={r.userEmail} />
+                    <AdminMemberCell
+                      name={r.userName}
+                      sub={r.userEmail}
+                      userId={r.userId}
+                      onViewMember={onViewMember}
+                    />
                   </AdminTd>
                   <AdminTd>
                     <AdminBadge tone="info">{r.type}</AdminBadge>
@@ -1125,12 +1057,22 @@ function TransactionsTab({
                   <AdminTd className="text-xs text-stone-500 whitespace-nowrap">
                     {new Date(r.date).toLocaleString()}
                   </AdminTd>
+                  <AdminTd align="right">
+                    <AdminDetailsButton onClick={() => setDetailRow(r)} />
+                  </AdminTd>
                 </AdminTr>
               ))
             )}
           </AdminTbody>
         </AdminTable>
       </AdminTableCard>
+      {detailRow && (
+        <AdminTransactionDetailModal
+          row={detailRow}
+          onClose={() => setDetailRow(null)}
+          onViewMember={onViewMember}
+        />
+      )}
     </div>
   );
 }
@@ -1140,15 +1082,18 @@ function InvestmentsTab({
   members,
   plans,
   onRefresh,
+  onViewMember,
 }: {
   rows: ReturnType<typeof flattenInvestments>;
   members: User[];
   plans: InvestmentPlan[];
   onRefresh: () => void;
+  onViewMember: (userId: string) => void;
 }) {
   const [view, setView] = useState<'list' | 'by-plan'>('list');
   const [assignUserId, setAssignUserId] = useState('');
   const [assignPlanId, setAssignPlanId] = useState('');
+  const [detailRow, setDetailRow] = useState<(typeof rows)[0] | null>(null);
   const auth = useAuth();
 
   const planOptions = useMemo(() => {
@@ -1167,14 +1112,15 @@ function InvestmentsTab({
       if (f === 'all') return true;
       return r.planName === f || r.planId === f;
     },
+    getItemDate: (r) => r.date,
   });
 
   const filtered = table.filtered;
 
-  const listPageSize = table.pageSize;
-  const listTotalPages = Math.max(1, Math.ceil(filtered.length / listPageSize));
-  const listPage = Math.min(table.page, listTotalPages);
-  const listPaginated = filtered.slice((listPage - 1) * listPageSize, listPage * listPageSize);
+  const paginatedRowKeys = useMemo(
+    () => new Set(table.paginated.map((r) => `${r.userId}-${r.id}`)),
+    [table.paginated]
+  );
 
   const byPlan = useMemo(() => {
     const map = new Map<string, typeof filtered>();
@@ -1280,9 +1226,11 @@ function InvestmentsTab({
             filter={table.filter}
             onFilterChange={table.setFilter}
             total={filtered.length}
-            page={listPage}
-            totalPages={listTotalPages}
+            page={table.page}
+            totalPages={table.totalPages}
             onPageChange={table.setPage}
+            pageSize={table.pageSize}
+            {...adminTableControlProps(table)}
           />
           {filtered.length === 0 ? (
             <p className="text-stone-500 text-sm py-8 text-center bg-white border border-stone-200 rounded-2xl">
@@ -1297,13 +1245,19 @@ function InvestmentsTab({
                     <AdminTh>Plan</AdminTh>
                     <AdminTh align="right">Amount</AdminTh>
                     <AdminTh>Date</AdminTh>
+                    <AdminTh align="right">Actions</AdminTh>
                   </tr>
                 </AdminThead>
                 <AdminTbody>
-                  {listPaginated.map((r) => (
+                  {table.paginated.map((r) => (
                     <AdminTr key={`${r.userId}-${r.id}`}>
                       <AdminTd>
-                        <AdminMemberCell name={r.userName} sub={r.userEmail} />
+                        <AdminMemberCell
+                          name={r.userName}
+                          sub={r.userEmail}
+                          userId={r.userId}
+                          onViewMember={onViewMember}
+                        />
                       </AdminTd>
                       <AdminTd>
                         <span className="font-semibold text-stone-800">{r.planName}</span>
@@ -1317,6 +1271,9 @@ function InvestmentsTab({
                       <AdminTd className="text-xs text-stone-500">
                         {new Date(r.date).toLocaleDateString()}
                       </AdminTd>
+                      <AdminTd align="right">
+                        <AdminDetailsButton onClick={() => setDetailRow(r)} />
+                      </AdminTd>
                     </AdminTr>
                   ))}
                 </AdminTbody>
@@ -1324,6 +1281,14 @@ function InvestmentsTab({
             </AdminTableCard>
           )}
         </>
+      )}
+
+      {detailRow && (
+        <AdminInvestmentDetailModal
+          row={detailRow}
+          onClose={() => setDetailRow(null)}
+          onViewMember={onViewMember}
+        />
       )}
 
       {view === 'by-plan' && (
@@ -1339,18 +1304,25 @@ function InvestmentsTab({
             filter={table.filter}
             onFilterChange={table.setFilter}
             total={filtered.length}
-            page={listPage}
-            totalPages={listTotalPages}
+            page={table.page}
+            totalPages={table.totalPages}
             onPageChange={table.setPage}
+            pageSize={table.pageSize}
+            {...adminTableControlProps(table)}
           />
           {byPlan.length === 0 ? (
             <p className="text-stone-500 text-sm">No purchases yet.</p>
           ) : (
-            byPlan.map(([planName, planRows]) => (
+            byPlan.map(([planName, planRows]) => {
+              const rowsOnPage = planRows.filter((r) =>
+                paginatedRowKeys.has(`${r.userId}-${r.id}`)
+              );
+              if (rowsOnPage.length === 0) return null;
+              return (
               <div key={planName}>
               <AdminTableCard
                 title={planName}
-                subtitle={`${planRows.length} purchase${planRows.length === 1 ? '' : 's'}`}
+                subtitle={`${rowsOnPage.length} on this page · ${planRows.length} total`}
               >
                 <AdminTable>
                   <AdminThead>
@@ -1358,13 +1330,19 @@ function InvestmentsTab({
                       <AdminTh>Member</AdminTh>
                       <AdminTh align="right">Amount</AdminTh>
                       <AdminTh>Date</AdminTh>
+                      <AdminTh align="right">Actions</AdminTh>
                     </tr>
                   </AdminThead>
                   <AdminTbody>
-                    {planRows.map((r) => (
+                    {rowsOnPage.map((r) => (
                       <AdminTr key={`${r.userId}-${r.id}`}>
                         <AdminTd>
-                          <AdminMemberCell name={r.userName} sub={r.userEmail} />
+                          <AdminMemberCell
+                            name={r.userName}
+                            sub={r.userEmail}
+                            userId={r.userId}
+                            onViewMember={onViewMember}
+                          />
                         </AdminTd>
                         <AdminTd align="right">
                           <AdminMoney amount={formatINR(r.amount)} />
@@ -1372,13 +1350,17 @@ function InvestmentsTab({
                         <AdminTd className="text-xs text-stone-500">
                           {new Date(r.date).toLocaleDateString()}
                         </AdminTd>
+                        <AdminTd align="right">
+                          <AdminDetailsButton onClick={() => setDetailRow(r)} />
+                        </AdminTd>
                       </AdminTr>
                     ))}
                   </AdminTbody>
                 </AdminTable>
               </AdminTableCard>
               </div>
-            ))
+            );
+            })
           )}
         </div>
       )}
@@ -1402,6 +1384,7 @@ function InquiriesTab({
       q.planLabel.toLowerCase().includes(s) ||
       (q.message || '').toLowerCase().includes(s),
     filterFn: (q, f) => q.status === f,
+    getItemDate: (q) => q.createdAt,
   });
 
   return (
@@ -1427,6 +1410,7 @@ function InquiriesTab({
         page={table.page}
         totalPages={table.totalPages}
         onPageChange={table.setPage}
+        {...adminTableControlProps(table)}
       />
       {inquiries.length === 0 ? (
         <p className="text-stone-500 text-sm">No inquiries yet.</p>

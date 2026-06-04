@@ -3,6 +3,9 @@ import { Clock, History } from 'lucide-react';
 import { api } from '../lib/apiClient';
 import { useAuth } from '../lib/auth';
 import type { KycHistoryEntry } from '../../shared/types';
+import { TablePagination } from './TablePagination';
+import { TableListToolbar } from './TableListToolbar';
+import { useTableList } from '../hooks/useTableList';
 
 function statusStyle(status: KycHistoryEntry['status']) {
   if (status === 'verified') return 'bg-emerald-50 text-emerald-800 border-emerald-200';
@@ -46,12 +49,30 @@ export function KycSubmissionHistory() {
   }
 
   return (
+    <KycHistoryList history={history} />
+  );
+}
+
+function KycHistoryList({ history }: { history: KycHistoryEntry[] }) {
+  const list = useTableList({
+    items: history,
+    pageSize: 5,
+    getItemDate: (entry) => entry.submittedAt,
+  });
+
+  return (
     <div className="mt-8 max-w-3xl">
       <h3 className="font-display font-bold text-lg text-stone-900 flex items-center gap-2 mb-4">
         <History className="w-5 h-5 text-[#7f4e1c]" /> Submission history
       </h3>
+      <TableListToolbar
+        dateFilter={list.dateFilter}
+        onDateFilterChange={list.setDateFilter}
+        sortOrder={list.sortOrder}
+        onSortOrderChange={list.setSortOrder}
+      />
       <div className="space-y-3">
-        {history.map((entry) => (
+        {list.paginated.map((entry) => (
           <div
             key={entry.id}
             className="bg-white border border-stone-200 rounded-2xl p-4 sm:p-5 shadow-sm"
@@ -99,6 +120,14 @@ export function KycSubmissionHistory() {
           </div>
         ))}
       </div>
+      <TablePagination
+        currentPage={list.page}
+        totalPages={list.totalPages}
+        onPageChange={list.setPage}
+        totalItems={list.total}
+        itemsPerPage={list.pageSize}
+        label="submissions"
+      />
     </div>
   );
 }

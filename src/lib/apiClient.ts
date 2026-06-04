@@ -1,10 +1,21 @@
 import type {
   AuthResponse,
   ContactInquiry,
+  DepositRequest,
+  DepositSettings,
+  PaymentSettings,
+  PublicPaymentSettings,
   InvestmentPlan,
   KycHistoryEntry,
   MilestoneTier,
+  PaginatedDepositRequests,
   PaginatedKycSubmissions,
+  PaginatedSupportTickets,
+  PublicDepositSettings,
+  SupportTicket,
+  SupportTicketCategory,
+  AdminPermission,
+  AdminStaffRole,
   User,
 } from '../../shared/types';
 import type { KycDetails } from './auth';
@@ -99,8 +110,34 @@ export const api = {
 
   deactivateAccount: () => request<{ ok: boolean }>('/auth/deactivate', { method: 'POST' }),
 
-  deposit: (amount: number) =>
-    request<User>('/wallet/deposit', { method: 'POST', body: JSON.stringify({ amount }) }),
+  getPaymentSettings: () =>
+    request<PublicPaymentSettings>('/payment/settings', { auth: false }),
+
+  getDepositSettings: () =>
+    request<PublicPaymentSettings>('/payment/settings', { auth: false }).then((p) => p.deposits),
+
+  getMyDepositRequests: () => request<DepositRequest[]>('/deposits/mine'),
+
+  submitManualDeposit: (body: {
+    amount: number;
+    utr: string;
+    paymentNote?: string;
+    paymentScreenshot: string;
+    paymentScreenshotName?: string;
+  }) =>
+    request<User>('/deposits/manual', { method: 'POST', body: JSON.stringify(body) }),
+
+  createGatewayDepositOrder: (amount: number) =>
+    request<{ orderId: string; depositRequestId: string; amount: number; mockCheckout: boolean }>(
+      '/deposits/gateway/order',
+      { method: 'POST', body: JSON.stringify({ amount }) }
+    ),
+
+  completeGatewayDeposit: (orderId: string) =>
+    request<User>('/deposits/gateway/complete', {
+      method: 'POST',
+      body: JSON.stringify({ orderId }),
+    }),
 
   withdraw: (amount: number) =>
     request<User>('/wallet/withdraw', { method: 'POST', body: JSON.stringify({ amount }) }),
@@ -115,6 +152,12 @@ export const api = {
     }),
 
   getAdminUsers: () => request<User[]>('/admin/users'),
+
+  adminImpersonateMember: (userId: string) =>
+    request<{ token: string; user: User }>(
+      `/admin/users/${encodeURIComponent(userId)}/impersonate`,
+      { method: 'POST' }
+    ),
 
   getAdminInquiries: () => request<ContactInquiry[]>('/admin/inquiries'),
 
@@ -189,6 +232,63 @@ export const api = {
   adminRejectWithdrawal: (userId: string, txId: string) =>
     request<User>(`/admin/withdrawals/${userId}/${txId}/reject`, { method: 'PATCH' }),
 
+  getAdminPaymentSettings: () => request<PaymentSettings>('/admin/payment/settings'),
+
+  updateAdminPaymentSettings: (settings: PaymentSettings) =>
+    request<PaymentSettings>('/admin/payment/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    }),
+
+  /** @deprecated Use getAdminPaymentSettings */
+  getAdminDepositSettings: () =>
+    request<PaymentSettings>('/admin/payment/settings').then((p) => p.deposits),
+
+  /** @deprecated Use updateAdminPaymentSettings */
+  updateAdminDepositSettings: (settings: DepositSettings) =>
+    request<PaymentSettings>('/admin/payment/settings', {
+      method: 'PUT',
+      body: JSON.stringify({
+        deposits: settings,
+        withdrawals: {
+          enabled: true,
+          requireKyc: true,
+          minAmount: 1,
+          maxAmountPerRequest: 500_000,
+          adminApprovalRequired: true,
+          capitalNoticeDays: 15,
+          profitWithdrawalAnytime: true,
+          memberInstructions: '',
+        },
+      } as PaymentSettings),
+    }).then((p) => p.deposits),
+
+  getAdminDepositRequests: (params?: {
+    status?: string;
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.status) q.set('status', params.status);
+    if (params?.search) q.set('search', params.search);
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.pageSize) q.set('pageSize', String(params.pageSize));
+    const qs = q.toString();
+    return request<PaginatedDepositRequests>(
+      `/admin/deposits/requests${qs ? `?${qs}` : ''}`
+    );
+  },
+
+  adminApproveDeposit: (requestId: string) =>
+    request<User>(`/admin/deposits/${requestId}/approve`, { method: 'PATCH' }),
+
+  adminRejectDeposit: (requestId: string, reason: string) =>
+    request<User>(`/admin/deposits/${requestId}/reject`, {
+      method: 'PATCH',
+      body: JSON.stringify({ reason }),
+    }),
+
   adminAssignInvestment: (userId: string, planId: string) =>
     request<User>('/admin/investments/assign', {
       method: 'POST',
@@ -219,6 +319,87 @@ export const api = {
       inquiries: ContactInquiry[];
     }>('/admin/export'),
 
+  getAdminAccess: () =>
+    request<{
+      isSuperAdmin: boolean;
+      adminRole: AdminStaffRole;
+      permissions: AdminPermission[];
+    }>('/admin/access'),
+
+  getAdminTeam: () =>
+    request<
+      {
+        id: string;
+        name: string;
+        email: string;
+        adminRole: AdminStaffRole;
+        adminPermissions: AdminPermission[];
+      }[]
+    >('/admin/team'),
+
+  createAdminTeamMember: (body: {
+    email: string;
+    name: string;
+    password: string;
+    permissions: AdminPermission[];
+  }) =>
+    request<User>('/admin/team', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateAdminTeamMember: (
+    userId: string,
+    body: { name?: string; permissions?: AdminPermission[]; password?: string }
+  ) =>
+    request<User>(`/admin/team/${encodeURIComponent(userId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  revokeAdminTeamMember: (userId: string) =>
+    request<User>(`/admin/team/${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+    }),
+
+  getMySupportTickets: () => request<SupportTicket[]>('/tickets/mine'),
+
+  createSupportTicket: (body: {
+    category: SupportTicketCategory;
+    subject: string;
+    message: string;
+  }) =>
+    request<SupportTicket>('/tickets', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  getAdminSupportTickets: (params?: {
+    status?: string;
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.status) q.set('status', params.status);
+    if (params?.search) q.set('search', params.search);
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.pageSize) q.set('pageSize', String(params.pageSize));
+    const qs = q.toString();
+    return request<PaginatedSupportTickets>(
+      `/admin/tickets${qs ? `?${qs}` : ''}`
+    );
+  },
+
+  adminUpdateSupportTicket: (
+    ticketId: string,
+    body: { status?: string; adminReply?: string }
+  ) =>
+    request<SupportTicket>(`/admin/tickets/${encodeURIComponent(ticketId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
   getAdminStats: () =>
     request<{
       totalMembers: number;
@@ -227,10 +408,13 @@ export const api = {
       pendingKyc: number;
       verifiedKyc: number;
       pendingWithdrawals: number;
+      pendingDeposits: number;
+      depositMode: 'manual' | 'gateway';
       totalWalletBalance: number;
       totalInvested: number;
       newInquiries: number;
       totalInquiries: number;
+      openSupportTickets: number;
       planCount: number;
       milestoneCount: number;
     }>('/admin/stats'),

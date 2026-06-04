@@ -27,7 +27,8 @@ Or run separately:
 |---------|-----|---------|
 | `npm run dev:api` | http://localhost:4000/api | REST API |
 | `npm run dev` | **http://localhost:3000** | Gaulaxmi main website |
-| `npm run dev:admin` | **http://localhost:3001** | Gaulaxmi admin panel |
+| `npm run dev:admin` | **http://localhost:3001** | Admin panel (also starts API on port 4000) |
+| `npm run dev:admin:vite` | **http://localhost:3001** | Admin UI only — API must already be running |
 
 **Main website:** **http://localhost:3000**  
 **Admin panel:** **http://localhost:3001** (linked from profile menu when signed in as admin)
@@ -52,6 +53,10 @@ Copy `.env.example` to `.env` and set `JWT_SECRET` for production.
 - `GET /api/admin/users` and `/api/admin/*` — admin-only management (plans, milestones, KYC, withdrawals, investments)
 
 Data persists in `server/data/database.json` (gitignored). Both frontends proxy `/api` to port **4000** in development.
+
+## Hero corporate PDF
+
+The **Download Full PDF** button on the homepage serves `public/Gaulaxmi.pdf` (copied to `/Gaulaxmi.pdf` when the site runs). Place your presentation file there; see `public/README.md`. The file is gitignored due to size (~50MB).
 
 ## Build
 

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../lib/auth';
 import { motion } from 'motion/react';
-import { Wallet, LogOut, ArrowUpRight, ArrowDownRight, ShieldCheck, ShieldAlert, CheckCircle, Clock, X, Users, Copy, MessageCircle, Send, Mail, Network, Search, Settings, Lock, UserRound, Trash2, AlertTriangle, ChevronLeft, ChevronRight, Upload, Check, FileText, Info, Sliders, UserCheck, UserX } from 'lucide-react';
+import { Wallet, LogOut, ArrowUpRight, ArrowDownRight, ShieldCheck, ShieldAlert, CheckCircle, Clock, X, Users, Copy, MessageCircle, Send, Mail, Network, Search, Settings, Lock, UserRound, Trash2, AlertTriangle, ChevronLeft, ChevronRight, Upload, Check, FileText, Info, Sliders, UserCheck, UserX, TrendingUp, LifeBuoy } from 'lucide-react';
 import { HierarchyTab } from './HierarchyTab';
 import logo from "../assets/Images/gaulaxmi-logo.png";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -23,6 +23,18 @@ import { DASHBOARD_NAV_ITEMS, type DashboardTabId } from '../lib/dashboardNav';
 import type { PendingPlanPurchase } from '../lib/planPurchaseFlow';
 import { KycInvestorCertificate, buildKycCertificateId } from './KycInvestorCertificate';
 import { KycSubmissionHistory } from './KycSubmissionHistory';
+import { DepositSection } from './DepositSection';
+import { WithdrawSection } from './WithdrawSection';
+import { WalletTransactionDetailModal } from './WalletTransactionDetailModal';
+import { WalletTransactionHistory } from './WalletTransactionHistory';
+import { HelpSupportSection } from './HelpSupportSection';
+import { InvestmentDetailModal } from './InvestmentDetailModal';
+import { InvestmentProgressTab } from './InvestmentProgressTab';
+import { DetailsActionButton } from './DetailsActionButton';
+import { TablePagination } from './TablePagination';
+import { TableListToolbar } from './TableListToolbar';
+import { useTableList } from '../hooks/useTableList';
+import type { Transaction, Investment, Referral } from '../lib/auth';
 
 type TabView = DashboardTabId;
 
@@ -30,94 +42,14 @@ const SIDEBAR_TAB_ICONS: Record<DashboardTabId, React.ReactNode> = {
   overview: <Wallet className="w-4 h-4" />,
   wallet: <ArrowUpRight className="w-4 h-4" />,
   investments: <CheckCircle className="w-4 h-4" />,
+  progress: <TrendingUp className="w-4 h-4" />,
   transactions: <Clock className="w-4 h-4" />,
   referrals: <Users className="w-4 h-4" />,
   hierarchy: <Network className="w-4 h-4" />,
   kyc: <ShieldCheck className="w-4 h-4" />,
+  support: <LifeBuoy className="w-4 h-4" />,
   profile: <UserRound className="w-4 h-4" />,
   settings: <Settings className="w-4 h-4" />,
-};
-
-const MIN_DEPOSIT = 1_000;
-
-const Pagination = ({ 
-  currentPage, 
-  totalPages, 
-  onPageChange, 
-  totalItems, 
-  itemsPerPage, 
-  label = "items" 
-}: { 
-  currentPage: number; 
-  totalPages: number; 
-  onPageChange: (page: number) => void; 
-  totalItems: number; 
-  itemsPerPage: number; 
-  label?: string;
-}) => {
-  if (totalPages <= 1) return null;
-
-  const startIdx = (currentPage - 1) * itemsPerPage + 1;
-  const endIdx = Math.min(currentPage * itemsPerPage, totalItems);
-
-  return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 mt-2 border-t border-stone-100 text-xs font-sans">
-      <div className="text-stone-500 font-medium">
-        Showing <span className="font-semibold text-stone-800">{startIdx}</span> to{" "}
-        <span className="font-semibold text-stone-800">{endIdx}</span> of{" "}
-        <span className="font-semibold text-[#7f4e1c] font-mono">{totalItems}</span> {label}
-      </div>
-      <div className="flex items-center gap-1">
-        <button
-          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
-          disabled={currentPage === 1}
-          className="p-1 px-2.5 bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 disabled:opacity-40 disabled:hover:bg-white rounded-lg font-semibold transition flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed text-stone-600 disabled:text-stone-400"
-        >
-          <ChevronLeft className="w-3.5 h-3.5" /> Prev
-        </button>
-        
-        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-          if (
-            page === 1 || 
-            page === totalPages || 
-            Math.abs(page - currentPage) <= 1
-          ) {
-            return (
-              <button
-                key={page}
-                onClick={() => onPageChange(page)}
-                className={`w-7 h-7 flex items-center justify-center rounded-lg font-bold border transition cursor-pointer text-xs ${
-                  currentPage === page
-                    ? "bg-[#7f4e1c] text-white border-[#7f4e1c] shadow-sm"
-                    : "bg-white hover:bg-stone-50 border-stone-200 hover:border-stone-300 text-stone-600"
-                }`}
-              >
-                {page}
-              </button>
-            );
-          } else if (
-            page === 2 || 
-            page === totalPages - 1
-          ) {
-            return (
-              <span key={page} className="text-stone-400 px-1 select-none">
-                ...
-              </span>
-            );
-          }
-          return null;
-        })}
-
-        <button
-          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
-          disabled={currentPage === totalPages}
-          className="p-1 px-2.5 bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 disabled:opacity-40 disabled:hover:bg-white rounded-lg font-semibold transition flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed text-stone-600 disabled:text-stone-400"
-        >
-          Next <ChevronRight className="w-3.5 h-3.5" />
-        </button>
-      </div>
-    </div>
-  );
 };
 
 export function Dashboard({
@@ -141,8 +73,6 @@ export function Dashboard({
   const { 
     user, 
     logout, 
-    deposit, 
-    withdraw, 
     verifyKyc, 
     submitKyc,
     allUsers,
@@ -161,11 +91,6 @@ export function Dashboard({
     setInternalTab(tab);
     if (onTabChange) onTabChange(tab);
   };
-  const [depositAmount, setDepositAmount] = useState('');
-  const [withdrawAmount, setWithdrawAmount] = useState('');
-  const [referralFilter, setReferralFilter] = useState<'all' | 'active' | 'pending'>('all');
-  const [referralSearch, setReferralSearch] = useState('');
-
   // Profile Form States
   const [profileName, setProfileName] = useState(user?.name || '');
   const [profileEmail, setProfileEmail] = useState(user?.email || '');
@@ -219,66 +144,31 @@ export function Dashboard({
     return data;
   }, [user]);
 
-  const filteredReferrals = useMemo(() => {
-    if (!user || !user.referrals) return [];
-    let list = user.referrals;
-    if (referralFilter !== 'all') {
-      list = list.filter(ref => ref.status === referralFilter);
-    }
-    if (referralSearch.trim()) {
-      const q = referralSearch.toLowerCase().trim();
-      list = list.filter(ref => 
-        ref.friendName.toLowerCase().includes(q) || 
-        ref.id.toLowerCase().includes(q)
-      );
-    }
-    return list;
-  }, [user, referralFilter, referralSearch]);
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [selectedInvestment, setSelectedInvestment] = useState<Investment | null>(null);
 
-  // Pagination states & sizes
-  const [investmentsPage, setInvestmentsPage] = useState(1);
-  const [transactionsPage, setTransactionsPage] = useState(1);
-  const [referralsPage, setReferralsPage] = useState(1);
-
-  const investmentsPageSize = 4;
-  const transactionsPageSize = 5;
-  const referralsPageSize = 5;
-
-  // Reset page counts when size changes or search updates
-  useEffect(() => {
-    setReferralsPage(1);
-  }, [referralFilter, referralSearch]);
-
-  const paginatedInvestments = useMemo(() => {
-    if (!user || !user.investments) return [];
-    const startIndex = (investmentsPage - 1) * investmentsPageSize;
-    return user.investments.slice(startIndex, startIndex + investmentsPageSize);
-  }, [user?.investments, investmentsPage]);
-
-  const totalInvestmentsPages = useMemo(() => {
-    if (!user || !user.investments) return 0;
-    return Math.ceil(user.investments.length / investmentsPageSize);
-  }, [user?.investments]);
-
-  const paginatedTransactions = useMemo(() => {
-    if (!user || !user.transactions) return [];
-    const startIndex = (transactionsPage - 1) * transactionsPageSize;
-    return user.transactions.slice(startIndex, startIndex + transactionsPageSize);
-  }, [user?.transactions, transactionsPage]);
-
-  const totalTransactionsPages = useMemo(() => {
-    if (!user || !user.transactions) return 0;
-    return Math.ceil(user.transactions.length / transactionsPageSize);
+  const walletTransactions = useMemo(() => {
+    if (!user?.transactions) return [];
+    return user.transactions.filter(
+      (tx) => tx.type === 'deposit' || tx.type === 'withdrawal'
+    );
   }, [user?.transactions]);
 
-  const paginatedReferrals = useMemo(() => {
-    const startIndex = (referralsPage - 1) * referralsPageSize;
-    return filteredReferrals.slice(startIndex, startIndex + referralsPageSize);
-  }, [filteredReferrals, referralsPage]);
+  const investmentsList = useTableList<Investment>({
+    items: user?.investments ?? [],
+    pageSize: 4,
+    getItemDate: (inv) => inv.date,
+  });
 
-  const totalReferralsPages = useMemo(() => {
-    return Math.ceil(filteredReferrals.length / referralsPageSize);
-  }, [filteredReferrals]);
+  const referralsList = useTableList<Referral>({
+    items: user?.referrals ?? [],
+    pageSize: 5,
+    debounceSearch: true,
+    searchFn: (ref, q) =>
+      ref.friendName.toLowerCase().includes(q) || ref.id.toLowerCase().includes(q),
+    filterFn: (ref, f) => f === 'all' || ref.status === f,
+    getSortValue: (ref) => ref.friendName.toLowerCase(),
+  });
 
   if (!user) return null;
 
@@ -290,66 +180,6 @@ export function Dashboard({
       return;
     }
     onStartPlanPurchase(plan.id);
-  };
-
-  const handleDeposit = async () => {
-    if (!kycVerified) {
-      toast.error(
-        user.kycStatus === 'submitted'
-          ? 'KYC is under admin review. You can deposit once approved.'
-          : 'Complete KYC and wait for admin approval before depositing.'
-      );
-      setActiveTab('kyc');
-      return;
-    }
-    const amount = parsePositiveAmount(depositAmount);
-    if (amount === null) {
-      toast.error('Enter a valid deposit amount.');
-      return;
-    }
-    if (!isValidMoneyAmount(amount, { min: MIN_DEPOSIT })) {
-      toast.error(`Minimum deposit is ${formatINR(MIN_DEPOSIT)}.`);
-      return;
-    }
-    try {
-      await deposit(amount);
-      setDepositAmount('');
-      toast.success('Deposit successful!');
-    } catch {
-      toast.error('Deposit failed.');
-    }
-  };
-
-  const handleWithdraw = async () => {
-    if (!kycVerified) {
-      toast.error(
-        user.kycStatus === 'submitted'
-          ? 'KYC is under admin review. You can withdraw once approved.'
-          : 'Complete KYC and wait for admin approval before withdrawing.'
-      );
-      setActiveTab('kyc');
-      return;
-    }
-    const amount = parsePositiveAmount(withdrawAmount);
-    if (amount === null) {
-      toast.error('Enter a valid withdrawal amount.');
-      return;
-    }
-    if (!isValidMoneyAmount(amount, { min: 1 })) {
-      toast.error('Enter a valid withdrawal amount.');
-      return;
-    }
-    if (amount > user.balance) {
-      toast.error('Insufficient balance.');
-      return;
-    }
-    try {
-      await withdraw(amount);
-      setWithdrawAmount('');
-      toast.success('Withdrawal request submitted!');
-    } catch {
-      toast.error('Withdrawal failed.');
-    }
   };
 
   const renderPlanCards = (gridClass = 'grid sm:grid-cols-2 lg:grid-cols-3 gap-4') => (
@@ -656,74 +486,17 @@ export function Dashboard({
                     </div>
                  </div>
 
-                 <div className="grid md:grid-cols-2 gap-6">
-                    <div className="bg-white border border-[#eae0d5]/85 rounded-3xl p-6 shadow-sm space-y-4">
-                      <h3 className="font-bold text-lg flex items-center gap-2"><ArrowDownRight className="w-5 h-5 text-green-600" /> Deposit Funds</h3>
-                      {kycVerified ? (
-                        <>
-                          <div className="space-y-2">
-                            <label className="text-xs font-semibold uppercase text-muted-foreground font-sans block">Amount (INR)</label>
-                            <input 
-                              type="number" 
-                              min={MIN_DEPOSIT}
-                              step={1000}
-                              value={depositAmount} 
-                              onChange={e => setDepositAmount(e.target.value)} 
-                              className="w-full bg-secondary/30 border border-border rounded-xl px-4 py-3 outline-none focus:border-primary/50" 
-                              placeholder={`Min ${formatINR(MIN_DEPOSIT)}`}
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={handleDeposit}
-                            className="w-full bg-[#7f4e1c] text-white hover:bg-[#633a11] font-semibold py-3 rounded-xl transition cursor-pointer"
-                          >
-                            Confirm Deposit
-                          </button>
-                        </>
-                      ) : (
-                        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-sm font-sans">
-                          {user.kycStatus === 'submitted'
-                            ? 'Deposits are disabled while your KYC is under admin review.'
-                            : 'Deposits are disabled until KYC is submitted and approved by an admin.'}
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="bg-white border border-[#eae0d5]/85 rounded-3xl p-6 shadow-sm space-y-4">
-                      <h3 className="font-bold text-lg flex items-center gap-2"><ArrowUpRight className="w-5 h-5 text-bark" /> Withdraw Funds</h3>
-                      {kycVerified ? (
-                        <>
-                          <div className="space-y-2">
-                            <label className="text-xs font-semibold uppercase text-muted-foreground font-sans block">Amount (INR)</label>
-                            <input 
-                              type="number" 
-                              min={1}
-                              max={user.balance}
-                              step={1}
-                              value={withdrawAmount} 
-                              onChange={e => setWithdrawAmount(e.target.value)} 
-                              className="w-full bg-secondary/30 border border-border rounded-xl px-4 py-3 outline-none focus:border-primary/50" 
-                              placeholder="e.g. 5000"
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={handleWithdraw}
-                            className="w-full bg-bark text-white font-semibold py-3 rounded-xl transition hover:opacity-90 cursor-pointer"
-                          >
-                            Request Withdrawal
-                          </button>
-                        </>
-                      ) : (
-                        <div className="p-4 bg-red-50 border border-red-200 text-red-800 rounded-xl text-sm font-sans">
-                          {user.kycStatus === 'submitted'
-                            ? 'Withdrawals are disabled while your KYC is under admin review.'
-                            : 'Withdrawals are disabled until KYC is submitted and approved by an admin.'}
-                        </div>
-                      )}
-                    </div>
-                 </div>
+                 <DepositSection
+                   kycVerified={kycVerified}
+                   onViewTransactionHistory={() => setActiveTab('transactions')}
+                 />
+
+                 <WithdrawSection
+                   kycVerified={kycVerified}
+                   kycStatus={user.kycStatus}
+                   balance={user.balance}
+                   onViewTransactionHistory={() => setActiveTab('transactions')}
+                 />
               </motion.div>
             )}
 
@@ -742,24 +515,33 @@ export function Dashboard({
                          </div>
                       ) : (
                          <div className="space-y-4">
+                            <TableListToolbar
+                              dateFilter={investmentsList.dateFilter}
+                              onDateFilterChange={investmentsList.setDateFilter}
+                              sortOrder={investmentsList.sortOrder}
+                              onSortOrderChange={investmentsList.setSortOrder}
+                            />
                             <div className="grid sm:grid-cols-2 gap-4">
-                            {paginatedInvestments.map((inv, idx) => (
+                            {investmentsList.paginated.map((inv, idx) => (
                               <div key={idx} className="bg-white border border-[#eae0d5]/85 rounded-2xl p-5 shadow-sm">
                                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 font-mono">Investment ID: {inv.id}</div>
                                  <div className="font-display font-bold text-xl text-bark">{inv.planName}</div>
-                                 <div className="flex justify-between items-center mt-4">
+                                 <div className="flex justify-between items-center mt-4 gap-2">
                                     <div className="text-emerald-600 font-extrabold text-[#7f4e1c]">₹{inv.amount.toLocaleString('en-IN')}</div>
                                     <div className="text-xs text-muted-foreground">{new Date(inv.date).toLocaleDateString()}</div>
+                                 </div>
+                                 <div className="mt-4 pt-3 border-t border-stone-100">
+                                   <DetailsActionButton onClick={() => setSelectedInvestment(inv)} />
                                  </div>
                               </div>
                             ))}
                          </div>
-                         <Pagination 
-                           currentPage={investmentsPage}
-                           totalPages={totalInvestmentsPages}
-                           onPageChange={setInvestmentsPage}
-                           totalItems={user.investments.length}
-                           itemsPerPage={investmentsPageSize}
+                         <TablePagination
+                           currentPage={investmentsList.page}
+                           totalPages={investmentsList.totalPages}
+                           onPageChange={investmentsList.setPage}
+                           totalItems={investmentsList.total}
+                           itemsPerPage={investmentsList.pageSize}
                            label="investments"
                          />
                       </div>
@@ -780,75 +562,27 @@ export function Dashboard({
                </motion.div>
             )}
 
+            {activeTab === 'progress' && user && (
+              <InvestmentProgressTab
+                investments={user.investments || []}
+                onViewDetails={setSelectedInvestment}
+                onBrowsePlans={() => setActiveTab('investments')}
+              />
+            )}
+
             {activeTab === 'transactions' && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 sm:space-y-6">
-                 <header className="space-y-1">
-                   <h2 className="font-display font-bold text-xl sm:text-2xl text-stone-900">Transaction History</h2>
-                   <p className="text-sm text-stone-500">Deposits, withdrawals, and investments</p>
-                 </header>
-                 <div className="bg-white border border-border rounded-3xl p-6 shadow-sm overflow-hidden font-sans">
-                    {(!user.transactions || user.transactions.length === 0) ? (
-                       <div className="text-center py-8 text-muted-foreground font-sans">
-                          No transactions found.
-                       </div>
-                    ) : (
-                       <div className="space-y-4">
-                          <div className="overflow-x-auto">
-                          <table className="w-full text-left text-sm font-sans">
-                             <thead>
-                                <tr className="border-b border-border pb-2 text-stone-400 text-xs uppercase tracking-wider font-semibold">
-                                   <th className="pb-3 text-left pl-1">Date</th>
-                                   <th className="pb-3 text-left">Type</th>
-                                   <th className="pb-3 text-left">Details</th>
-                                   <th className="pb-3 text-right">Amount</th>
-                                   <th className="pb-3 text-right pr-1">Status</th>
-                                </tr>
-                             </thead>
-                             <tbody className="divide-y divide-border">
-                                {paginatedTransactions.map((tx) => (
-                                   <tr key={tx.id} className="group hover:bg-secondary/20 transition-colors">
-                                      <td className="py-4 text-muted-foreground pl-1">{new Date(tx.date).toLocaleDateString()} <span className="text-xs opacity-70">{new Date(tx.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></td>
-                                      <td className="py-4 capitalize font-medium">
-                                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs
-                                           ${tx.type === 'deposit' ? 'bg-green-50 text-green-700' : 
-                                             tx.type === 'withdrawal' ? 'bg-orange-50 text-orange-700' : 
-                                             'bg-blue-50 text-blue-700'}`}
-                                         >
-                                            {tx.type === 'deposit' && <ArrowDownRight className="w-3.5 h-3.5" />}
-                                            {tx.type === 'withdrawal' && <ArrowUpRight className="w-3.5 h-3.5" />}
-                                            {tx.type === 'investment' && <CheckCircle className="w-3.5 h-3.5" />}
-                                            {tx.type}
-                                         </span>
-                                      </td>
-                                      <td className="py-4 text-bark">{tx.details || '-'}</td>
-                                      <td className={`py-4 text-right font-bold ${tx.type === 'deposit' ? 'text-green-600' : tx.type === 'withdrawal' ? 'text-[#7b3f08]' : 'text-primary'}`}>
-                                         {tx.type === 'deposit' ? '+' : '-'}₹{tx.amount.toLocaleString('en-IN')}
-                                      </td>
-                                      <td className="py-4 text-right pr-1">
-                                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold
-                                           ${tx.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-orange-50 text-orange-700 border border-orange-100'}`}
-                                         >
-                                            {tx.status === 'completed' ? <CheckCircle className="w-3 h-3 text-emerald-700" /> : <Clock className="w-3 h-3 text-orange-700" />}
-                                            <span className="capitalize">{tx.status}</span>
-                                         </span>
-                                      </td>
-                                   </tr>
-                                ))}
-                             </tbody>
-                          </table>
-                       </div>
-                       <Pagination 
-                          currentPage={transactionsPage}
-                          totalPages={totalTransactionsPages}
-                          onPageChange={setTransactionsPage}
-                          totalItems={user.transactions.length}
-                          itemsPerPage={transactionsPageSize}
-                          label="transactions"
-                       />
-                    </div>
-                    )}
-                 </div>
-              </motion.div>
+              <>
+                <WalletTransactionHistory
+                  transactions={walletTransactions}
+                  onViewDetails={setSelectedTransaction}
+                />
+                {selectedTransaction && (
+                  <WalletTransactionDetailModal
+                    transaction={selectedTransaction}
+                    onClose={() => setSelectedTransaction(null)}
+                  />
+                )}
+              </>
             )}
 
             {activeTab === 'referrals' && (
@@ -984,47 +718,28 @@ export function Dashboard({
                       <p className="text-xs text-muted-foreground mt-0.5 font-sans">Track signups and payout status of direct node connections.</p>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto items-center">
-                      <div className="relative w-full sm:w-64">
-                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                          <Search className="h-4 w-4 text-stone-400" />
-                        </span>
-                        <input
-                          type="text"
-                          value={referralSearch}
-                          onChange={(e) => setReferralSearch(e.target.value)}
-                          placeholder="Search connections..."
-                          className="w-full pl-9 pr-8 py-2 text-sm bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-[#7f4e1c] focus:border-[#7f4e1c] font-sans"
-                        />
-                        {referralSearch && (
-                          <button
-                            onClick={() => setReferralSearch('')}
-                            className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-stone-400 hover:text-stone-600 cursor-pointer"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="flex bg-stone-100 p-1 rounded-xl border border-stone-200 text-xs font-semibold font-sans w-full sm:w-auto justify-center">
-                        {(['all', 'active', 'pending'] as const).map((filter) => (
-                          <button
-                            key={filter}
-                            onClick={() => setReferralFilter(filter)}
-                            className={`px-3 py-1.5 rounded-lg capitalize transition-all cursor-pointer flex-1 sm:flex-initial text-center ${
-                              referralFilter === filter 
-                              ? 'bg-white text-stone-900 shadow-sm border border-stone-200/50 font-bold' 
-                              : 'text-stone-500 hover:text-stone-700'
-                            }`}
-                          >
-                            {filter}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
                   </div>
 
-                  {filteredReferrals.length === 0 ? (
+                  <TableListToolbar
+                    searchInput={referralsList.searchInput}
+                    onSearchChange={referralsList.setSearchInput}
+                    searchPlaceholder="Search connections…"
+                    filters={[
+                      { id: 'all', label: 'All' },
+                      { id: 'active', label: 'Active' },
+                      { id: 'pending', label: 'Pending' },
+                    ]}
+                    filter={referralsList.filter}
+                    onFilterChange={referralsList.setFilter}
+                    dateFilter={referralsList.dateFilter}
+                    onDateFilterChange={referralsList.setDateFilter}
+                    sortOrder={referralsList.sortOrder}
+                    onSortOrderChange={referralsList.setSortOrder}
+                    showDateRange={referralsList.showDateRange}
+                    showSort={referralsList.showSort}
+                  />
+
+                  {referralsList.total === 0 ? (
                     <div className="text-center py-12 text-stone-500 border border-stone-150 border-dashed rounded-2xl bg-stone-50/50 font-sans">
                       <Users className="w-8 h-8 text-stone-300 mx-auto mb-2 animate-pulse" />
                       <p className="text-sm font-medium animate-pulse">No referral connections matches active criteria</p>
@@ -1043,7 +758,7 @@ export function Dashboard({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-stone-100">
-                          {paginatedReferrals.map((ref) => (
+                          {referralsList.paginated.map((ref) => (
                             <tr key={ref.id} className="group hover:bg-stone-50/60 transition-colors">
                               <td className="py-3.5 pl-2 flex items-center gap-3">
                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${
@@ -1076,12 +791,12 @@ export function Dashboard({
                         </tbody>
                       </table>
                     </div>
-                    <Pagination 
-                      currentPage={referralsPage}
-                      totalPages={totalReferralsPages}
-                      onPageChange={setReferralsPage}
-                      totalItems={filteredReferrals.length}
-                      itemsPerPage={referralsPageSize}
+                    <TablePagination
+                      currentPage={referralsList.page}
+                      totalPages={referralsList.totalPages}
+                      onPageChange={referralsList.setPage}
+                      totalItems={referralsList.total}
+                      itemsPerPage={referralsList.pageSize}
                       label="connections"
                     />
                   </div>
@@ -1089,6 +804,8 @@ export function Dashboard({
                 </div>
               </motion.div>
             )}
+
+            {activeTab === 'support' && <HelpSupportSection />}
 
             {activeTab === 'kyc' && (
               <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 sm:space-y-6 w-full max-w-4xl">
@@ -1989,6 +1706,13 @@ export function Dashboard({
             )}
          </main>
       </div>
+
+      {selectedInvestment && (
+        <InvestmentDetailModal
+          investment={selectedInvestment}
+          onClose={() => setSelectedInvestment(null)}
+        />
+      )}
 
       {/* Deactivate Confirmation Popup Modal */}
       {showDeactivateConfirm && (

@@ -14,6 +14,7 @@ export interface Transaction {
   date: string;
   status: 'completed' | 'pending' | 'rejected';
   details?: string;
+  depositRequestId?: string;
 }
 
 export interface Investment {
@@ -66,6 +67,8 @@ export interface User {
   isDeactivated?: boolean;
   profileImage?: string;
   role?: UserRole;
+  adminRole?: 'super_admin' | 'staff';
+  adminPermissions?: import('../../shared/types').AdminPermission[];
   milestoneFulfillment?: Record<string, 'eligible' | 'fulfilled'>;
 }
 
@@ -77,7 +80,14 @@ interface AuthContextType {
   login: (email: string, pass: string) => Promise<AuthResult>;
   register: (name: string, email: string, pass: string) => Promise<AuthResult>;
   logout: () => void;
-  deposit: (amount: number) => Promise<void>;
+  submitManualDeposit: (
+    amount: number,
+    utr: string,
+    paymentScreenshot: string,
+    paymentNote?: string,
+    paymentScreenshotName?: string
+  ) => Promise<void>;
+  payViaGateway: (amount: number) => Promise<void>;
   withdraw: (amount: number) => Promise<void>;
   verifyKyc: () => void;
   submitKyc: (details: KycDetails) => Promise<void>;
@@ -89,6 +99,8 @@ interface AuthContextType {
   adminAdjustBalance: (userId: string, amount: number, note: string) => Promise<void>;
   adminApproveWithdrawal: (userId: string, txId: string) => Promise<void>;
   adminRejectWithdrawal: (userId: string, txId: string) => Promise<void>;
+  adminApproveDeposit: (requestId: string) => Promise<void>;
+  adminRejectDeposit: (requestId: string, reason: string) => Promise<void>;
   adminSetDeactivated: (userId: string, deactivated: boolean) => Promise<void>;
   adminRemoveUser: (userId: string) => Promise<void>;
   adminAssignInvestment: (userId: string, planId: string) => Promise<AuthResult>;
@@ -210,8 +222,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const deposit = async (amount: number) => {
-    const updated = await api.deposit(amount);
+  const submitManualDeposit = async (
+    amount: number,
+    utr: string,
+    paymentScreenshot: string,
+    paymentNote?: string,
+    paymentScreenshotName?: string
+  ) => {
+    const updated = await api.submitManualDeposit({
+      amount,
+      utr,
+      paymentScreenshot,
+      paymentNote,
+      paymentScreenshotName,
+    });
+    setUser(updated);
+  };
+
+  const payViaGateway = async (amount: number) => {
+    const order = await api.createGatewayDepositOrder(amount);
+    const updated = await api.completeGatewayDeposit(order.orderId);
     setUser(updated);
   };
 
@@ -300,6 +330,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await loadAdminUsers();
   };
 
+  const adminApproveDeposit = async (requestId: string) => {
+    const updated = await api.adminApproveDeposit(requestId);
+    syncUserInList(updated);
+    await loadAdminUsers();
+  };
+
+  const adminRejectDeposit = async (requestId: string, reason: string) => {
+    const updated = await api.adminRejectDeposit(requestId, reason);
+    syncUserInList(updated);
+    await loadAdminUsers();
+  };
+
   const adminSetDeactivated = async (userId: string, deactivated: boolean) => {
     const updated = await api.adminSetDeactivated(userId, deactivated);
     syncUserInList(updated);
@@ -344,7 +386,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         register,
         logout,
-        deposit,
+        submitManualDeposit,
+        payViaGateway,
         withdraw,
         verifyKyc,
         submitKyc,
@@ -355,6 +398,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         adminAdjustBalance,
         adminApproveWithdrawal,
         adminRejectWithdrawal,
+        adminApproveDeposit,
+        adminRejectDeposit,
         adminSetDeactivated,
         adminRemoveUser,
         adminAssignInvestment,
