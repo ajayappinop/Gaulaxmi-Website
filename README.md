@@ -5,7 +5,7 @@ Marketing site, member dashboard, and admin console for the Gaulaxmi investment 
 ## Stack
 
 - **Frontend:** React 19, Vite 6, Tailwind CSS v4, TypeScript
-- **Backend:** Express API, JSON file database (`server/data/database.json`), JWT auth, bcrypt passwords
+- **Backend:** Express API, MongoDB or JSON file database, JWT auth, bcrypt passwords
 
 ## Run locally (full stack)
 
@@ -35,6 +35,22 @@ Or run separately:
 
 Copy `.env.example` to `.env` and set `JWT_SECRET` for production.
 
+### Database
+
+| Mode | When | Storage |
+|------|------|---------|
+| **MongoDB** | Set `MONGODB_URI` in `.env` | Per-entity collections (`users`, `plans`, `deposit_requests`, etc.) |
+| **JSON file** | Leave `MONGODB_URI` unset | `server/data/database.json` (local dev default) |
+
+APIs read and write **individual documents** in MongoDB (not a full-database snapshot). On first start with MongoDB, if `database.json` already has data it is imported automatically.
+
+MongoDB collections: `users`, `plans`, `milestones`, `inquiries`, `deposit_requests`, `support_tickets`, `settings`.
+
+```bash
+# Local MongoDB (Docker example)
+docker run -d --name gaulaxmi-mongo -p 27017:27017 mongo:7
+```
+
 ## Demo accounts (seeded on first API start)
 
 | Role | Email | Password |
@@ -52,7 +68,7 @@ Copy `.env.example` to `.env` and set `JWT_SECRET` for production.
 - `POST /api/wallet/deposit`, `POST /api/wallet/withdraw`, `POST /api/kyc/submit`, `POST /api/investments` — member actions
 - `GET /api/admin/users` and `/api/admin/*` — admin-only management (plans, milestones, KYC, withdrawals, investments)
 
-Data persists in `server/data/database.json` (gitignored). Both frontends proxy `/api` to port **4000** in development.
+Data persists in MongoDB (when configured) or `server/data/database.json` (gitignored). Both frontends proxy `/api` to port **4000** in development.
 
 ## Hero corporate PDF
 

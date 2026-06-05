@@ -1,4 +1,4 @@
-import { readDb, updateDb } from '../db.js';
+import { getStore } from '../store/index.js';
 import { findDbUser } from './users.js';
 import { newId } from '../utils.js';
 import type {
@@ -20,17 +20,15 @@ const VALID_CATEGORIES: SupportTicketCategory[] = [
   'technical',
 ];
 
-export function countOpenSupportTickets(): number {
-  return (readDb().supportTickets || []).filter(
-    (t) => t.status === 'open' || t.status === 'in_progress'
-  ).length;
+export async function countOpenSupportTickets(): Promise<number> {
+  return getStore().countOpenSupportTickets();
 }
 
-export function createSupportTicket(
+export async function createSupportTicket(
   userId: string,
   body: { category: string; subject: string; message: string }
-): SupportTicket {
-  const user = findDbUser(userId);
+): Promise<SupportTicket> {
+  const user = await findDbUser(userId);
   if (!user) throw new Error('User not found');
 
   const category = String(body.category || 'general').trim() as SupportTicketCategory;
@@ -59,26 +57,24 @@ export function createSupportTicket(
     updatedAt: now,
   };
 
-  updateDb((db) => {
-    db.supportTickets = [ticket, ...(db.supportTickets || [])];
-  });
-
+  await getStore().insertSupportTicket(ticket);
   return ticket;
 }
 
-export function getUserSupportTickets(userId: string): SupportTicket[] {
-  return (readDb().supportTickets || [])
+export async function getUserSupportTickets(userId: string): Promise<SupportTicket[]> {
+  const tickets = await getStore().listSupportTickets();
+  return tickets
     .filter((t) => t.userId === userId)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
-export function querySupportTickets(opts: {
+export async function querySupportTickets(opts: {
   status: SupportTicketFilterStatus;
   search: string;
   page: number;
   pageSize: number;
-}): PaginatedSupportTickets {
-  let rows = [...(readDb().supportTickets || [])];
+}): Promise<PaginatedSupportTickets> {
+  let rows = await getStore().listSupportTickets();
   const q = opts.search.trim().toLowerCase();
   if (opts.status !== 'all') {
     rows = rows.filter((r) => r.status === opts.status);
@@ -110,12 +106,13 @@ export function querySupportTickets(opts: {
   };
 }
 
-export function updateSupportTicket(
+export async function updateSupportTicket(
   ticketId: string,
   body: { status?: string; adminReply?: string },
   adminEmail: string
-): SupportTicket | null {
-  const current = (readDb().supportTickets || []).find((t) => t.id === ticketId);
+): Promise<SupportTicket | null> {
+  const store = getStore();
+  const current = await store.findSupportTicket(ticketId);
   if (!current) return null;
 
   const status = body.status
@@ -140,36 +137,27 @@ export function updateSupportTicket(
     throw new Error('Add a reply before marking the ticket resolved or closed');
   }
 
-  let updated: SupportTicket | null = null;
-  updateDb((db) => {
-    const idx = (db.supportTickets || []).findIndex((t) => t.id === ticketId);
-    if (idx === -1) return;
-    const row = db.supportTickets![idx];
-    const now = new Date().toISOString();
-    const next: SupportTicket = {
-      ...row,
-      updatedAt: now,
-    };
-    if (status) {
-      next.status = status;
-      if (status === 'resolved' || status === 'closed') {
-        next.resolvedAt = now;
-      }
-    }
-    if (reply !== undefined) {
-      if (reply.length > 0) {
-        next.adminReply = reply;
-        next.repliedAt = now;
-        next.repliedBy = adminEmail;
-      } else {
-        delete next.adminReply;
-        delete next.repliedAt;
-        delete next.repliedBy;
-      }
-    }
-    db.supportTickets![idx] = next;
-    updated = next;
-  });
+  const now = new Date().toISOString();
+  const patch: Partial<SupportTicket> = { updatedAt: now };
 
-  return updated;
+  if (status) {
+    patch.status = status;
+    if (status === 'resolved' || status === 'closed') {
+      patch.resolvedAt = now;
+    }
+  }
+
+  if (reply !== undefined) {
+    if (reply.length > 0) {
+      patch.adminReply = reply;
+      patch.repliedAt = now;
+      patch.repliedBy = adminEmail;
+    } else {
+      patch.adminReply = undefined;
+      patch.repliedAt = undefined;
+      patch.repliedBy = undefined;
+    }
+  }
+
+  return store.updateSupportTicket(ticketId, patch);
 }

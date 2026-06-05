@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { readDb } from '../db.js';
+import { findDbUser } from '../services/users.js';
 import { toPublicUser } from '../utils.js';
 import { isPanelAdminUser } from '../../shared/adminPermissions.js';
 import type { DbUser, User } from '../../shared/types.js';
@@ -26,31 +26,44 @@ export function signToken(user: DbUser): string {
   return jwt.sign({ userId: user.id, role: user.role ?? 'member' }, JWT_SECRET, { expiresIn: '7d' });
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+/** Validates Bearer token and attaches user to the request. Returns false if a response was sent. */
+export async function authenticateRequest(req: Request, res: Response): Promise<boolean> {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Authentication required' });
+    res.status(401).json({ error: 'Authentication required' });
+    return false;
   }
   try {
     const payload = jwt.verify(header.slice(7), JWT_SECRET) as AuthPayload;
-    const db = readDb();
-    const user = db.users.find((u) => u.id === payload.userId);
-    if (!user) return res.status(401).json({ error: 'User not found' });
-    if (user.isDeactivated) return res.status(403).json({ error: 'Account deactivated' });
+    const user = await findDbUser(payload.userId);
+    if (!user) {
+      res.status(401).json({ error: 'User not found' });
+      return false;
+    }
+    if (user.isDeactivated) {
+      res.status(403).json({ error: 'Account deactivated' });
+      return false;
+    }
     req.auth = payload;
     req.dbUser = user;
     req.publicUser = toPublicUser(user);
-    next();
+    return true;
   } catch {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+    res.status(401).json({ error: 'Invalid or expired token' });
+    return false;
   }
 }
 
-export function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  requireAuth(req, res, () => {
-    if (!req.dbUser || !isPanelAdminUser(req.dbUser)) {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
-    next();
-  });
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const ok = await authenticateRequest(req, res);
+  if (ok) next();
+}
+
+export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  const ok = await authenticateRequest(req, res);
+  if (!ok) return;
+  if (!req.dbUser || !isPanelAdminUser(req.dbUser)) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
 }

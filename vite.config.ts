@@ -16,7 +16,11 @@ export default defineConfig({
   server: {
     port: 3000,
     strictPort: true,
+    host: true,
     open: '/',
+    watch: {
+      ignored: ['**/server/**', '**/.env', '**/server/data/**'],
+    },
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:4000',

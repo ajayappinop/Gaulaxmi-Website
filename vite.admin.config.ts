@@ -36,6 +36,9 @@ export default defineConfig({
     host: true,
     open: '/',
     strictPort: true,
+    watch: {
+      ignored: ['**/server/**', '**/.env', '**/server/data/**'],
+    },
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:4000',

@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { readDb, updateDb } from '../db.js';
+import { getStore } from '../store/index.js';
 import { findDbUser, findDbUserByEmail } from './users.js';
 import { assertSuperAdmin } from './adminAccess.js';
 import { newId, walletAddress, toPublicUser } from '../utils.js';
@@ -27,9 +27,10 @@ function sanitizePermissions(perms: unknown): AdminPermission[] {
   );
 }
 
-export function listAdminTeam(): AdminTeamMember[] {
-  return readDb()
-    .users.filter((u) => u.role === 'admin')
+export async function listAdminTeam(): Promise<AdminTeamMember[]> {
+  const users = await getStore().listUsers();
+  return users
+    .filter((u) => u.role === 'admin')
     .map((u) => ({
       id: u.id,
       name: u.name,
@@ -48,7 +49,7 @@ export function listAdminTeam(): AdminTeamMember[] {
     });
 }
 
-export function createStaffAdmin(
+export async function createStaffAdmin(
   actorId: string,
   body: {
     email: string;
@@ -56,8 +57,8 @@ export function createStaffAdmin(
     password: string;
     permissions: AdminPermission[];
   }
-): User {
-  const actor = findDbUser(actorId);
+): Promise<User> {
+  const actor = await findDbUser(actorId);
   if (!actor) throw new Error('User not found');
   assertSuperAdmin(actor);
 
@@ -73,30 +74,21 @@ export function createStaffAdmin(
     throw new Error('Select at least one permission');
   }
 
-  const existing = findDbUserByEmail(email);
+  const store = getStore();
+  const existing = await findDbUserByEmail(email);
   if (existing) {
     if (isSuperAdminUser(existing)) {
       throw new Error('Cannot modify the super admin account this way');
     }
-    updateDb((db) => {
-      const idx = db.users.findIndex((u) => u.id === existing.id);
-      if (idx === -1) return;
-      const row = db.users[idx];
-      row.role = 'admin';
-      row.adminRole = 'staff';
-      row.adminPermissions = permissions;
-      row.name = name;
-    });
+    existing.role = 'admin';
+    existing.adminRole = 'staff';
+    existing.adminPermissions = permissions;
+    existing.name = name;
     if (password.length >= 6) {
-      const hash = bcrypt.hashSync(password, 10);
-      updateDb((db) => {
-        const idx = db.users.findIndex((u) => u.id === existing.id);
-        if (idx !== -1) db.users[idx].passwordHash = hash;
-      });
+      existing.passwordHash = bcrypt.hashSync(password, 10);
     }
-    const final = findDbUser(existing.id);
-    if (!final) throw new Error('Failed to update admin');
-    return toPublicUser(final);
+    await store.saveUser(existing);
+    return toPublicUser(existing);
   }
 
   const passwordHash = bcrypt.hashSync(password, 10);
@@ -120,14 +112,11 @@ export function createStaffAdmin(
     phone: '',
   };
 
-  updateDb((db) => {
-    db.users.push(newUser);
-  });
-
+  await store.insertUser(newUser);
   return toPublicUser(newUser);
 }
 
-export function updateStaffAdmin(
+export async function updateStaffAdmin(
   actorId: string,
   targetId: string,
   body: {
@@ -135,12 +124,12 @@ export function updateStaffAdmin(
     permissions?: AdminPermission[];
     password?: string;
   }
-): User {
-  const actor = findDbUser(actorId);
+): Promise<User> {
+  const actor = await findDbUser(actorId);
   if (!actor) throw new Error('User not found');
   assertSuperAdmin(actor);
 
-  const target = findDbUser(targetId);
+  const target = await findDbUser(targetId);
   if (!target) throw new Error('Admin user not found');
   if (isSuperAdminUser(target)) {
     throw new Error('Super admin role cannot be changed');
@@ -155,37 +144,26 @@ export function updateStaffAdmin(
     throw new Error('Select at least one permission');
   }
 
-  updateDb((db) => {
-    const idx = db.users.findIndex((u) => u.id === targetId);
-    if (idx === -1) return;
-    const row = db.users[idx];
-    if (body.name?.trim()) row.name = body.name.trim();
-    if (permissions) {
-      row.role = 'admin';
-      row.adminRole = 'staff';
-      row.adminPermissions = permissions;
-    }
-  });
-
+  if (body.name?.trim()) target.name = body.name.trim();
+  if (permissions) {
+    target.role = 'admin';
+    target.adminRole = 'staff';
+    target.adminPermissions = permissions;
+  }
   if (body.password && String(body.password).length >= 6) {
-    const hash = bcrypt.hashSync(String(body.password), 10);
-    updateDb((db) => {
-      const idx = db.users.findIndex((u) => u.id === targetId);
-      if (idx !== -1) db.users[idx].passwordHash = hash;
-    });
+    target.passwordHash = bcrypt.hashSync(String(body.password), 10);
   }
 
-  const updated = findDbUser(targetId);
-  if (!updated) throw new Error('Failed to update admin');
-  return toPublicUser(updated);
+  await getStore().saveUser(target);
+  return toPublicUser(target);
 }
 
-export function revokeStaffAdmin(actorId: string, targetId: string): User {
-  const actor = findDbUser(actorId);
+export async function revokeStaffAdmin(actorId: string, targetId: string): Promise<User> {
+  const actor = await findDbUser(actorId);
   if (!actor) throw new Error('User not found');
   assertSuperAdmin(actor);
 
-  const target = findDbUser(targetId);
+  const target = await findDbUser(targetId);
   if (!target) throw new Error('Admin user not found');
   if (isSuperAdminUser(target)) {
     throw new Error('Cannot revoke super admin access');
@@ -194,16 +172,9 @@ export function revokeStaffAdmin(actorId: string, targetId: string): User {
     throw new Error('You cannot revoke your own admin access');
   }
 
-  updateDb((db) => {
-    const idx = db.users.findIndex((u) => u.id === targetId);
-    if (idx === -1) return;
-    const row = db.users[idx];
-    row.role = 'member';
-    delete row.adminRole;
-    delete row.adminPermissions;
-  });
-
-  const updated = findDbUser(targetId);
-  if (!updated) throw new Error('Failed to revoke admin');
-  return toPublicUser(updated);
+  target.role = 'member';
+  delete target.adminRole;
+  delete target.adminPermissions;
+  await getStore().saveUser(target);
+  return toPublicUser(target);
 }

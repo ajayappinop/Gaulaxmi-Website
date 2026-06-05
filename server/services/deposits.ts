@@ -1,4 +1,4 @@
-import { readDb, updateDb } from '../db.js';
+import { getStore } from '../store/index.js';
 import { DEFAULT_DEPOSIT_SETTINGS } from '../defaultDepositSettings.js';
 import { findDbUser, mutateUser } from './users.js';
 import { isKycVerifiedUser, newId, toPublicUser } from '../utils.js';
@@ -20,22 +20,23 @@ import type {
 
 export { getDepositSettingsFromDb, saveDepositSettings, toPublicDepositSettings };
 
-export function ensureDepositSettings() {
-  return ensurePaymentSettings().deposits;
+export async function ensureDepositSettings() {
+  return (await ensurePaymentSettings()).deposits;
 }
 
-function findDepositRequest(id: string): DepositRequest | undefined {
-  return readDb().depositRequests?.find((r) => r.id === id);
+async function findDepositRequest(id: string): Promise<DepositRequest | undefined> {
+  const request = await getStore().findDepositRequest(id);
+  return request ?? undefined;
 }
 
-function addPendingDepositTx(
+async function addPendingDepositTx(
   userId: string,
   amount: number,
   depositRequestId: string,
   details: string
-): string {
+): Promise<string> {
   const txId = newId('tx_');
-  mutateUser(userId, (u) => {
+  await mutateUser(userId, (u) => {
     const tx: Transaction = {
       id: txId,
       type: 'deposit',
@@ -50,24 +51,24 @@ function addPendingDepositTx(
   return txId;
 }
 
-export function submitManualDepositRequest(
+export async function submitManualDepositRequest(
   userId: string,
   amount: number,
   utr: string,
   paymentNote?: string,
   paymentScreenshot?: string,
   paymentScreenshotName?: string
-): User {
-  const settings = ensureDepositSettings();
+): Promise<User> {
+  const settings = await ensureDepositSettings();
   if (settings.mode !== 'manual') {
     throw new Error('Manual deposits are disabled. Use the payment gateway.');
   }
-  const dbUser = findDbUser(userId);
+  const dbUser = await findDbUser(userId);
   if (!dbUser) throw new Error('User not found');
   if (settings.requireKyc && !isKycVerifiedUser(dbUser)) {
     throw new Error('KYC must be approved by admin before depositing funds');
   }
-  const minDeposit = settings.minAmount ?? getMinDepositAmount();
+  const minDeposit = settings.minAmount ?? (await getMinDepositAmount());
   if (!Number.isFinite(amount) || amount < minDeposit) {
     throw new Error(`Minimum deposit is ₹${minDeposit.toLocaleString('en-IN')}`);
   }
@@ -82,7 +83,7 @@ export function submitManualDepositRequest(
   }
 
   const requestId = newId('dep_');
-  const txId = addPendingDepositTx(
+  const txId = await addPendingDepositTx(
     userId,
     amount,
     requestId,
@@ -105,37 +106,35 @@ export function submitManualDepositRequest(
     submittedAt: new Date().toISOString(),
   };
 
-  updateDb((db) => {
-    db.depositRequests = [request, ...(db.depositRequests || [])];
-  });
+  await getStore().insertDepositRequest(request);
 
-  const updated = findDbUser(userId);
+  const updated = await findDbUser(userId);
   return toPublicUser(updated!);
 }
 
-export function createGatewayDepositOrder(userId: string, amount: number): {
+export async function createGatewayDepositOrder(userId: string, amount: number): Promise<{
   orderId: string;
   depositRequestId: string;
   amount: number;
   mockCheckout: boolean;
-} {
-  const settings = ensureDepositSettings();
+}> {
+  const settings = await ensureDepositSettings();
   if (settings.mode !== 'gateway') {
     throw new Error('Payment gateway is disabled. Use manual bank transfer.');
   }
-  const dbUser = findDbUser(userId);
+  const dbUser = await findDbUser(userId);
   if (!dbUser) throw new Error('User not found');
   if (settings.requireKyc && !isKycVerifiedUser(dbUser)) {
     throw new Error('KYC must be approved by admin before depositing funds');
   }
-  const minDeposit = settings.minAmount ?? getMinDepositAmount();
+  const minDeposit = settings.minAmount ?? (await getMinDepositAmount());
   if (!Number.isFinite(amount) || amount < minDeposit) {
     throw new Error(`Minimum deposit is ₹${minDeposit.toLocaleString('en-IN')}`);
   }
 
   const orderId = newId('gw_');
   const requestId = newId('dep_');
-  const txId = addPendingDepositTx(
+  const txId = await addPendingDepositTx(
     userId,
     amount,
     requestId,
@@ -155,9 +154,7 @@ export function createGatewayDepositOrder(userId: string, amount: number): {
     submittedAt: new Date().toISOString(),
   };
 
-  updateDb((db) => {
-    db.depositRequests = [request, ...(db.depositRequests || [])];
-  });
+  await getStore().insertDepositRequest(request);
 
   const gw = settings.gateway;
   const mockCheckout = gw.testMode || !gw.keyId?.trim() || !gw.keySecret?.trim();
@@ -165,21 +162,21 @@ export function createGatewayDepositOrder(userId: string, amount: number): {
   return { orderId, depositRequestId: requestId, amount, mockCheckout };
 }
 
-export function completeGatewayDeposit(userId: string, orderId: string, adminEmail?: string): User {
-  const db = readDb();
-  const request = (db.depositRequests || []).find(
+export async function completeGatewayDeposit(userId: string, orderId: string, adminEmail?: string): Promise<User> {
+  const requests = await getStore().listDepositRequests();
+  const request = requests.find(
     (r) => r.userId === userId && r.gatewayOrderId === orderId && r.channel === 'gateway'
   );
   if (!request) throw new Error('Payment order not found');
   if (request.status !== 'pending') throw new Error('This deposit was already processed');
 
-  approveDepositRequest(request.id, adminEmail || 'payment-gateway');
-  const updated = findDbUser(userId);
+  await approveDepositRequest(request.id, adminEmail || 'payment-gateway');
+  const updated = await findDbUser(userId);
   return toPublicUser(updated!);
 }
 
-function creditDepositApproval(userId: string, request: DepositRequest, reviewedBy: string): void {
-  mutateUser(userId, (u) => {
+async function creditDepositApproval(userId: string, request: DepositRequest): Promise<void> {
+  await mutateUser(userId, (u) => {
     u.balance += request.amount;
     u.transactions = (u.transactions || []).map((tx) =>
       tx.id === request.transactionId
@@ -196,40 +193,32 @@ function creditDepositApproval(userId: string, request: DepositRequest, reviewed
   });
 }
 
-export function approveDepositRequest(requestId: string, reviewedBy: string): User | null {
-  const db = readDb();
-  const idx = (db.depositRequests || []).findIndex((r) => r.id === requestId);
-  if (idx === -1) return null;
-  const request = db.depositRequests![idx];
-  if (request.status !== 'pending') return null;
+export async function approveDepositRequest(requestId: string, reviewedBy: string): Promise<User | null> {
+  const store = getStore();
+  const request = await store.findDepositRequest(requestId);
+  if (!request || request.status !== 'pending') return null;
 
-  creditDepositApproval(request.userId, request, reviewedBy);
-
-  updateDb((d) => {
-    const i = (d.depositRequests || []).findIndex((r) => r.id === requestId);
-    if (i === -1) return;
-    d.depositRequests![i] = {
-      ...d.depositRequests![i],
-      status: 'approved',
-      reviewedAt: new Date().toISOString(),
-      reviewedBy,
-    };
+  await creditDepositApproval(request.userId, request);
+  await store.updateDepositRequest(requestId, {
+    status: 'approved',
+    reviewedAt: new Date().toISOString(),
+    reviewedBy,
   });
 
-  const updated = findDbUser(request.userId);
+  const updated = await findDbUser(request.userId);
   return updated ? toPublicUser(updated) : null;
 }
 
-export function rejectDepositRequest(
+export async function rejectDepositRequest(
   requestId: string,
   reason: string,
   reviewedBy: string
-): User | null {
-  const db = readDb();
-  const request = (db.depositRequests || []).find((r) => r.id === requestId);
+): Promise<User | null> {
+  const store = getStore();
+  const request = await store.findDepositRequest(requestId);
   if (!request || request.status !== 'pending') return null;
 
-  mutateUser(request.userId, (u) => {
+  await mutateUser(request.userId, (u) => {
     u.transactions = (u.transactions || []).map((tx) =>
       tx.id === request.transactionId
         ? {
@@ -241,42 +230,38 @@ export function rejectDepositRequest(
     );
   });
 
-  updateDb((d) => {
-    const i = (d.depositRequests || []).findIndex((r) => r.id === requestId);
-    if (i === -1) return;
-    d.depositRequests![i] = {
-      ...d.depositRequests![i],
-      status: 'rejected',
-      rejectionReason: reason,
-      reviewedAt: new Date().toISOString(),
-      reviewedBy,
-    };
+  await store.updateDepositRequest(requestId, {
+    status: 'rejected',
+    rejectionReason: reason,
+    reviewedAt: new Date().toISOString(),
+    reviewedBy,
   });
 
-  const updated = findDbUser(request.userId);
+  const updated = await findDbUser(request.userId);
   return updated ? toPublicUser(updated) : null;
 }
 
-export function getUserDepositRequests(userId: string): DepositRequest[] {
-  ensureDepositSettings();
-  return (readDb().depositRequests || [])
+export async function getUserDepositRequests(userId: string): Promise<DepositRequest[]> {
+  await ensureDepositSettings();
+  const requests = await getStore().listDepositRequests();
+  return requests
     .filter((r) => r.userId === userId)
     .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
 }
 
-export function countPendingDepositRequests(): number {
-  return (readDb().depositRequests || []).filter((r) => r.status === 'pending').length;
+export async function countPendingDepositRequests(): Promise<number> {
+  return getStore().countPendingDepositRequests();
 }
 
 export type DepositFilterStatus = 'all' | DepositRequestStatus;
 
-export function queryDepositRequests(opts: {
+export async function queryDepositRequests(opts: {
   status: DepositFilterStatus;
   search: string;
   page: number;
   pageSize: number;
-}): PaginatedDepositRequests {
-  let rows = [...(readDb().depositRequests || [])];
+}): Promise<PaginatedDepositRequests> {
+  let rows = await getStore().listDepositRequests();
   const q = opts.search.trim().toLowerCase();
   if (opts.status !== 'all') {
     rows = rows.filter((r) => r.status === opts.status);

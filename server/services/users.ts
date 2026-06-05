@@ -1,41 +1,41 @@
 import type { DbUser, KycDetails, Transaction, User } from '../../shared/types.js';
-import { readDb, updateDb } from '../db.js';
+import type { InvestmentPlan } from '../../shared/types.js';
+import { getStore } from '../store/index.js';
 import { newId, toPublicUser } from '../utils.js';
 import { computePlanReturns } from '../defaultPlans.js';
-import type { InvestmentPlan } from '../../shared/types.js';
 import { appendKycSubmission, kycCertificateId } from './kycHistory.js';
 
 export { kycCertificateId };
 
-export function findDbUser(userId: string): DbUser | undefined {
-  return readDb().users.find((u) => u.id === userId);
+export async function findDbUser(userId: string): Promise<DbUser | undefined> {
+  const user = await getStore().findUser(userId);
+  return user ?? undefined;
 }
 
-export function findDbUserByEmail(email: string): DbUser | undefined {
-  const norm = email.trim().toLowerCase();
-  return readDb().users.find((u) => u.email.trim().toLowerCase() === norm);
+export async function findDbUserByEmail(email: string): Promise<DbUser | undefined> {
+  const user = await getStore().findUserByEmail(email);
+  return user ?? undefined;
 }
 
-export function mutateUser(userId: string, mutator: (u: DbUser) => void): User | null {
-  let updated: User | null = null;
-  updateDb((db) => {
-    const idx = db.users.findIndex((u) => u.id === userId);
-    if (idx === -1) return;
-    mutator(db.users[idx]);
-    updated = toPublicUser(db.users[idx]);
-  });
-  return updated;
+export async function mutateUser(userId: string, mutator: (u: DbUser) => void): Promise<User | null> {
+  const store = getStore();
+  const user = await store.findUser(userId);
+  if (!user) return null;
+  mutator(user);
+  await store.saveUser(user);
+  return toPublicUser(user);
 }
 
-export function getPlanFromDb(planId: string): InvestmentPlan | undefined {
-  return readDb().plans.find((p) => p.id === planId);
+export async function getPlanFromDb(planId: string): Promise<InvestmentPlan | undefined> {
+  const plan = await getStore().findPlan(planId);
+  return plan ?? undefined;
 }
 
-export function recordInvestment(
+export async function recordInvestment(
   userId: string,
   plan: InvestmentPlan,
   details?: string
-): User | null {
+): Promise<User | null> {
   return mutateUser(userId, (u) => {
     const amount = plan.amount;
     if (u.balance < amount) throw new Error('Insufficient balance');
@@ -83,9 +83,9 @@ export function buildPlanFromBody(body: {
   };
 }
 
-export function applyKycSubmit(userId: string, details: KycDetails): User | null {
+export async function applyKycSubmit(userId: string, details: KycDetails): Promise<User | null> {
   const certId = kycCertificateId(userId, details.phone);
-  const updated = mutateUser(userId, (u) => {
+  return mutateUser(userId, (u) => {
     u.name = details.fullName.trim() || u.name;
     u.phone = details.phone || u.phone;
     u.kycStatus = 'submitted';
@@ -95,5 +95,4 @@ export function applyKycSubmit(userId: string, details: KycDetails): User | null
     u.kycDetails = details;
     appendKycSubmission(u, details, certId);
   });
-  return updated;
 }

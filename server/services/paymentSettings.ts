@@ -1,4 +1,4 @@
-import { readDb, updateDb } from '../db.js';
+import { getStore } from '../store/index.js';
 import { DEFAULT_DEPOSIT_SETTINGS } from '../defaultDepositSettings.js';
 import { DEFAULT_PAYMENT_SETTINGS } from '../defaultPaymentSettings.js';
 import type {
@@ -10,10 +10,12 @@ import type {
   WithdrawalSettings,
 } from '../../shared/types.js';
 
-export function getPaymentSettingsFromDb(): PaymentSettings {
-  const db = readDb();
-  if (db.paymentSettings) return db.paymentSettings;
-  const legacy = db.depositSettings;
+async function resolvePaymentSettings(): Promise<PaymentSettings> {
+  const store = getStore();
+  const payment = await store.getPaymentSettings();
+  if (payment) return payment;
+
+  const legacy = await store.getDepositSettings();
   if (legacy) {
     return {
       deposits: {
@@ -28,34 +30,26 @@ export function getPaymentSettingsFromDb(): PaymentSettings {
   return { ...DEFAULT_PAYMENT_SETTINGS };
 }
 
-export function ensurePaymentSettings(): PaymentSettings {
-  const db = readDb();
-  let changed = false;
-  if (!db.paymentSettings) {
-    db.paymentSettings = getPaymentSettingsFromDb();
-    if (!db.paymentSettings.updatedAt) {
-      db.paymentSettings.updatedAt = new Date().toISOString();
-    }
-    changed = true;
-  }
-  if (!db.depositRequests) {
-    db.depositRequests = [];
-    changed = true;
-  }
-  if (changed) {
-    updateDb((d) => {
-      d.paymentSettings = db.paymentSettings;
-      d.depositRequests = db.depositRequests;
-    });
-  }
-  return getPaymentSettingsFromDb();
+export async function getPaymentSettingsFromDb(): Promise<PaymentSettings> {
+  return resolvePaymentSettings();
 }
 
-export function getDepositSettingsFromDb(): DepositSettings {
-  return ensurePaymentSettings().deposits;
+export async function ensurePaymentSettings(): Promise<PaymentSettings> {
+  const store = getStore();
+  const current = await resolvePaymentSettings();
+  const payment = await store.getPaymentSettings();
+
+  if (!payment) {
+    await store.savePaymentSettings(current);
+  }
+  return resolvePaymentSettings();
 }
 
-export function savePaymentSettings(next: PaymentSettings): PaymentSettings {
+export async function getDepositSettingsFromDb(): Promise<DepositSettings> {
+  return (await ensurePaymentSettings()).deposits;
+}
+
+export async function savePaymentSettings(next: PaymentSettings): Promise<PaymentSettings> {
   const saved: PaymentSettings = {
     deposits: {
       ...next.deposits,
@@ -83,16 +77,13 @@ export function savePaymentSettings(next: PaymentSettings): PaymentSettings {
     },
     updatedAt: new Date().toISOString(),
   };
-  updateDb((db) => {
-    db.paymentSettings = saved;
-    db.depositSettings = saved.deposits;
-  });
+  await getStore().savePaymentSettings(saved);
   return saved;
 }
 
-export function saveDepositSettings(next: DepositSettings): DepositSettings {
-  const current = ensurePaymentSettings();
-  const saved = savePaymentSettings({ ...current, deposits: next });
+export async function saveDepositSettings(next: DepositSettings): Promise<DepositSettings> {
+  const current = await ensurePaymentSettings();
+  const saved = await savePaymentSettings({ ...current, deposits: next });
   return saved.deposits;
 }
 
@@ -129,12 +120,12 @@ export function toPublicPaymentSettings(settings: PaymentSettings): PublicPaymen
   };
 }
 
-export function getMinDepositAmount(): number {
-  return getDepositSettingsFromDb().minAmount ?? DEFAULT_DEPOSIT_SETTINGS.minAmount;
+export async function getMinDepositAmount(): Promise<number> {
+  return (await getDepositSettingsFromDb()).minAmount ?? DEFAULT_DEPOSIT_SETTINGS.minAmount;
 }
 
-export function validateWithdrawalAmount(amount: number, balance: number): string | null {
-  const w = ensurePaymentSettings().withdrawals;
+export async function validateWithdrawalAmount(amount: number, balance: number): Promise<string | null> {
+  const w = (await ensurePaymentSettings()).withdrawals;
   if (!w.enabled) return 'Withdrawals are temporarily disabled by admin';
   if (!Number.isFinite(amount) || amount < w.minAmount) {
     return `Minimum withdrawal is ₹${w.minAmount.toLocaleString('en-IN')}`;

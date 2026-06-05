@@ -6,7 +6,7 @@ import type {
   PaginatedKycSubmissions,
   User,
 } from '../../shared/types.js';
-import { readDb, updateDb } from '../db.js';
+import { getStore } from '../store/index.js';
 import { isAdminUser, newId, toPublicUser } from '../utils.js';
 
 export function kycCertificateId(userId: string, phone?: string): string {
@@ -40,14 +40,18 @@ export function backfillKycHistory(u: DbUser): void {
   ];
 }
 
-export function migrateAllKycHistory(): number {
-  const db = readDb();
+export async function migrateAllKycHistory(): Promise<number> {
+  const store = getStore();
+  const users = await store.listUsers();
   let count = 0;
-  for (const u of db.users) {
+  for (const u of users) {
     if (isAdminUser(u)) continue;
     const before = u.kycHistory?.length ?? 0;
     backfillKycHistory(u);
-    if ((u.kycHistory?.length ?? 0) > before) count++;
+    if ((u.kycHistory?.length ?? 0) > before) {
+      await store.saveUser(u);
+      count++;
+    }
   }
   return count;
 }
@@ -65,12 +69,12 @@ export function appendKycSubmission(u: DbUser, details: KycDetails, certificateI
   return entry;
 }
 
-export function findKycSubmission(submissionId: string): {
+export async function findKycSubmission(submissionId: string): Promise<{
   user: DbUser;
   entry: KycHistoryEntry;
-} | null {
-  const db = readDb();
-  for (const user of db.users) {
+} | null> {
+  const users = await getStore().listUsers();
+  for (const user of users) {
     backfillKycHistory(user);
     const entry = user.kycHistory?.find((h) => h.id === submissionId);
     if (entry) return { user, entry };
@@ -83,66 +87,13 @@ function applyReviewToUser(u: DbUser, entry: KycHistoryEntry): void {
   u.kycDetails = { ...entry.details };
 }
 
-export function approveKycSubmission(submissionId: string, reviewedBy: string): User | null {
-  let result: User | null = null;
-  updateDb((db) => {
-    for (const u of db.users) {
-      backfillKycHistory(u);
-      const entry = u.kycHistory?.find((h) => h.id === submissionId);
-      if (!entry || entry.status !== 'submitted') return;
-
-      const now = new Date().toISOString();
-      entry.status = 'verified';
-      entry.reviewedAt = now;
-      entry.reviewedBy = reviewedBy;
-      entry.rejectionReason = undefined;
-
-      u.kycStatus = 'verified';
-      u.isKycVerified = true;
-      u.kycRejectionReason = undefined;
-      applyReviewToUser(u, entry);
-      result = toPublicUser(u);
-    }
-  });
-  return result;
-}
-
-export function rejectKycSubmission(
-  submissionId: string,
-  reason: string,
-  reviewedBy: string
-): User | null {
-  let result: User | null = null;
-  updateDb((db) => {
-    for (const u of db.users) {
-      backfillKycHistory(u);
-      const entry = u.kycHistory?.find((h) => h.id === submissionId);
-      if (!entry || entry.status !== 'submitted') return;
-
-      const now = new Date().toISOString();
-      entry.status = 'rejected';
-      entry.reviewedAt = now;
-      entry.reviewedBy = reviewedBy;
-      entry.rejectionReason = reason;
-
-      u.kycStatus = 'rejected';
-      u.isKycVerified = false;
-      u.kycRejectionReason = reason;
-      applyReviewToUser(u, entry);
-      result = toPublicUser(u);
-    }
-  });
-  return result;
-}
-
-export function approveLatestKycForUser(userId: string, reviewedBy: string): User | null {
-  let result: User | null = null;
-  updateDb((db) => {
-    const u = db.users.find((x) => x.id === userId);
-    if (!u) return;
+export async function approveKycSubmission(submissionId: string, reviewedBy: string): Promise<User | null> {
+  const store = getStore();
+  const users = await store.listUsers();
+  for (const u of users) {
     backfillKycHistory(u);
-    const entry = [...(u.kycHistory ?? [])].reverse().find((h) => h.status === 'submitted');
-    if (!entry) return;
+    const entry = u.kycHistory?.find((h) => h.id === submissionId);
+    if (!entry || entry.status !== 'submitted') continue;
 
     const now = new Date().toISOString();
     entry.status = 'verified';
@@ -154,19 +105,23 @@ export function approveLatestKycForUser(userId: string, reviewedBy: string): Use
     u.isKycVerified = true;
     u.kycRejectionReason = undefined;
     applyReviewToUser(u, entry);
-    result = toPublicUser(u);
-  });
-  return result;
+    await store.saveUser(u);
+    return toPublicUser(u);
+  }
+  return null;
 }
 
-export function rejectLatestKycForUser(userId: string, reason: string, reviewedBy: string): User | null {
-  let result: User | null = null;
-  updateDb((db) => {
-    const u = db.users.find((x) => x.id === userId);
-    if (!u) return;
+export async function rejectKycSubmission(
+  submissionId: string,
+  reason: string,
+  reviewedBy: string
+): Promise<User | null> {
+  const store = getStore();
+  const users = await store.listUsers();
+  for (const u of users) {
     backfillKycHistory(u);
-    const entry = [...(u.kycHistory ?? [])].reverse().find((h) => h.status === 'submitted');
-    if (!entry) return;
+    const entry = u.kycHistory?.find((h) => h.id === submissionId);
+    if (!entry || entry.status !== 'submitted') continue;
 
     const now = new Date().toISOString();
     entry.status = 'rejected';
@@ -178,14 +133,62 @@ export function rejectLatestKycForUser(userId: string, reason: string, reviewedB
     u.isKycVerified = false;
     u.kycRejectionReason = reason;
     applyReviewToUser(u, entry);
-    result = toPublicUser(u);
-  });
-  return result;
+    await store.saveUser(u);
+    return toPublicUser(u);
+  }
+  return null;
 }
 
-function flattenSubmissions(): AdminKycSubmissionRow[] {
+export async function approveLatestKycForUser(userId: string, reviewedBy: string): Promise<User | null> {
+  const u = await getStore().findUser(userId);
+  if (!u) return null;
+  backfillKycHistory(u);
+  const entry = [...(u.kycHistory ?? [])].reverse().find((h) => h.status === 'submitted');
+  if (!entry) return null;
+
+  const now = new Date().toISOString();
+  entry.status = 'verified';
+  entry.reviewedAt = now;
+  entry.reviewedBy = reviewedBy;
+  entry.rejectionReason = undefined;
+
+  u.kycStatus = 'verified';
+  u.isKycVerified = true;
+  u.kycRejectionReason = undefined;
+  applyReviewToUser(u, entry);
+  await getStore().saveUser(u);
+  return toPublicUser(u);
+}
+
+export async function rejectLatestKycForUser(
+  userId: string,
+  reason: string,
+  reviewedBy: string
+): Promise<User | null> {
+  const u = await getStore().findUser(userId);
+  if (!u) return null;
+  backfillKycHistory(u);
+  const entry = [...(u.kycHistory ?? [])].reverse().find((h) => h.status === 'submitted');
+  if (!entry) return null;
+
+  const now = new Date().toISOString();
+  entry.status = 'rejected';
+  entry.reviewedAt = now;
+  entry.reviewedBy = reviewedBy;
+  entry.rejectionReason = reason;
+
+  u.kycStatus = 'rejected';
+  u.isKycVerified = false;
+  u.kycRejectionReason = reason;
+  applyReviewToUser(u, entry);
+  await getStore().saveUser(u);
+  return toPublicUser(u);
+}
+
+async function flattenSubmissions(): Promise<AdminKycSubmissionRow[]> {
   const rows: AdminKycSubmissionRow[] = [];
-  for (const u of readDb().users) {
+  const users = await getStore().listUsers();
+  for (const u of users) {
     if (isAdminUser(u) || u.role === 'admin') continue;
     backfillKycHistory(u);
     for (const h of u.kycHistory ?? []) {
@@ -209,18 +212,18 @@ function flattenSubmissions(): AdminKycSubmissionRow[] {
   );
 }
 
-export function queryKycSubmissions(options: {
+export async function queryKycSubmissions(options: {
   status?: KycFilterStatus;
   search?: string;
   page?: number;
   pageSize?: number;
-}): PaginatedKycSubmissions {
+}): Promise<PaginatedKycSubmissions> {
   const status = options.status ?? 'all';
   const search = (options.search ?? '').trim().toLowerCase();
   const page = Math.max(1, options.page ?? 1);
   const pageSize = Math.min(50, Math.max(5, options.pageSize ?? 10));
 
-  let rows = flattenSubmissions();
+  let rows = await flattenSubmissions();
 
   if (status !== 'all') {
     rows = rows.filter((r) => r.status === status);
@@ -252,6 +255,7 @@ export function queryKycSubmissions(options: {
   };
 }
 
-export function countPendingKycSubmissions(): number {
-  return flattenSubmissions().filter((r) => r.status === 'submitted').length;
+export async function countPendingKycSubmissions(): Promise<number> {
+  const rows = await flattenSubmissions();
+  return rows.filter((r) => r.status === 'submitted').length;
 }
