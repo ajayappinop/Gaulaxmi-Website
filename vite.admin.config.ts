@@ -13,21 +13,30 @@ function serveAdminAtRoot(): Plugin {
   return {
     name: 'serve-admin-at-root',
     configureServer(server) {
-      server.middlewares.use((req, _res, next) => {
-        const url = req.url?.split('?')[0] ?? '';
-
-        if (url === '/' || url === '/index.html') {
-          const qs = req.url?.includes('?')
-            ? '?' + req.url.split('?').slice(1).join('?')
-            : '';
-
-          req.url = '/admin.html' + qs;
-        }
-
-        next();
-      });
+      server.middlewares.use(rewriteAdminRoot);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(rewriteAdminRoot);
     },
   };
+}
+
+function rewriteAdminRoot(
+  req: { url?: string },
+  _res: unknown,
+  next: () => void
+): void {
+  const url = req.url?.split('?')[0] ?? '';
+
+  if (url === '/' || url === '/index.html') {
+    const qs = req.url?.includes('?')
+      ? '?' + req.url.split('?').slice(1).join('?')
+      : '';
+
+    req.url = '/admin.html' + qs;
+  }
+
+  next();
 }
 
 /** Rename dist-admin/admin.html -> dist-admin/index.html after build */
@@ -69,9 +78,22 @@ export default defineConfig({
     strictPort: true,
 
     watch: {
-      ignored: ['**/server/**', '**/.env', '**/server/data/**'],
+      ignored: ['**/server/**', '**/.env', '**/.env.*', '**/server/data/**'],
     },
 
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:4000',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
+  },
+
+  preview: {
+    port: 3001,
+    host: true,
+    strictPort: true,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:4000',

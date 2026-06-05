@@ -28,12 +28,20 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    port: 3000,
+    host: true,
+    strictPort: true,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:4000',
+        changeOrigin: true,
+      },
+    },
+  },
   build: {
     rollupOptions: {
-      input: {
-        main: path.resolve(projectRoot, 'index.html'),
-        admin: path.resolve(projectRoot, 'admin/index.html'),
-      },
+      input: path.resolve(projectRoot, 'index.html'),
     },
   },
 });

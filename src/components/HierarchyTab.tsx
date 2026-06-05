@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-hot-toast';
+import { useAuth } from '../lib/auth';
+import { buildNetworkTreeFromUser, type NetworkNode } from '../lib/networkTree';
 import { 
   Users, 
   LayoutGrid, 
@@ -24,25 +26,6 @@ import {
   ChevronRight,
   ChevronDown
 } from 'lucide-react';
-
-// Enhanced Mock Hierarchy data representing the chain from Founder
-// down to the logged-in user, and down to their referrals (Multi-level layout)
-interface NetworkNode {
-  id: string;
-  name: string;
-  phone: string;
-  email: string;
-  level: number;
-  role: string;
-  joinDate: string;
-  totalReferrals: number;
-  status: 'active' | 'pending';
-  totalInvested: string;
-  monthlyPayout: string;
-  isCurrentUser?: boolean;
-  referredBy?: string;
-  children: NetworkNode[];
-}
 
 function Pagination({
   currentPage,
@@ -124,179 +107,38 @@ function Pagination({
   );
 }
 
-const mockNetworkData: NetworkNode = {
-  id: "GLX-0001",
-  name: "Gaurav Vyas (Founder)",
-  phone: "+91 94140 12345",
-  email: "founder@gaulaxmi.com",
-  level: 1,
-  role: "Global Admin & Founder",
-  joinDate: "05 Jan 2024",
-  totalReferrals: 12,
-  status: "active",
-  totalInvested: "₹50,00,000",
-  monthlyPayout: "Gaulaxmi Estate Base",
-  children: [
-    {
-      id: "GLX-0054",
-      name: "Rajesh Kumar (Partner)",
-      phone: "+91 98120 44556",
-      email: "rajesh.partner@gaulaxmi.com",
-      level: 2,
-      role: "Strategic Master Partner",
-      joinDate: "12 Feb 2024",
-      totalReferrals: 5,
-      status: "active",
-      totalInvested: "₹15,00,000",
-      monthlyPayout: "₹75,000 / mo",
-      referredBy: "Gaurav Vyas",
-      children: [
-        {
-          id: "GLX-0129",
-          name: "Amrita Patel (Referrer)",
-          phone: "+91 81290 88223",
-          email: "amrita.patel@gmail.com",
-          level: 3,
-          role: "District Representative",
-          joinDate: "20 Mar 2024",
-          totalReferrals: 3,
-          status: "active",
-          totalInvested: "₹5,00,000",
-          monthlyPayout: "₹25,000 / mo",
-          referredBy: "Rajesh Kumar",
-          children: [
-            {
-              id: "GLX-1042",
-              name: "John Doe (You)",
-              phone: "+91 90000 12345",
-              email: "john.doe@example.com",
-              level: 4,
-              role: "Verified Cow Investor",
-              joinDate: "01 May 2024",
-              totalReferrals: 2,
-              status: "active",
-              totalInvested: "₹3,00,000",
-              monthlyPayout: "₹15,000 / mo",
-              isCurrentUser: true,
-              referredBy: "Amrita Patel",
-              children: [
-                {
-                  id: "GLX-2089",
-                  name: "Sarah Smith",
-                  phone: "+91 88888 11111",
-                  email: "sarah.smith@example.com",
-                  level: 5,
-                  role: "Cow-Tier I Investor",
-                  joinDate: "10 Jun 2024",
-                  totalReferrals: 2,
-                  status: "active",
-                  totalInvested: "₹1,50,000",
-                  monthlyPayout: "₹7,500 / mo",
-                  referredBy: "John Doe (You)",
-                  children: [
-                    {
-                      id: "GLX-4011",
-                      name: "Mike Brown",
-                      phone: "+91 77777 22222",
-                      email: "mike.brown@outlook.com",
-                      level: 6,
-                      role: "Micro Investor",
-                      joinDate: "15 Jul 2024",
-                      totalReferrals: 0,
-                      status: "active",
-                      totalInvested: "₹50,000",
-                      monthlyPayout: "₹2,500 / mo",
-                      referredBy: "Sarah Smith",
-                      children: []
-                    },
-                    {
-                      id: "GLX-4012",
-                      name: "Emily Davis",
-                      phone: "+91 77777 33333",
-                      email: "emily.davis@gmail.com",
-                      level: 6,
-                      role: "Interested Lead",
-                      joinDate: "28 Jul 2024",
-                      totalReferrals: 0,
-                      status: "pending",
-                      totalInvested: "₹0",
-                      monthlyPayout: "₹0 / mo",
-                      referredBy: "Sarah Smith",
-                      children: []
-                    }
-                  ]
-                },
-                {
-                  id: "GLX-2090",
-                  name: "David Wilson",
-                  phone: "+91 88888 22222",
-                  email: "david.w@example.com",
-                  level: 5,
-                  role: "Cow-Tier I Investor",
-                  joinDate: "18 Jun 2024",
-                  totalReferrals: 1,
-                  status: "active",
-                  totalInvested: "₹1,50,000",
-                  monthlyPayout: "₹7,500 / mo",
-                  referredBy: "John Doe (You)",
-                  children: [
-                    {
-                      id: "GLX-4025",
-                      name: "Jessica Taylor",
-                      phone: "+91 77777 44444",
-                      email: "jessica.t@example.com",
-                      level: 6,
-                      role: "Micro Investor",
-                      joinDate: "05 Aug 2024",
-                      totalReferrals: 0,
-                      status: "active",
-                      totalInvested: "₹50,000",
-                      monthlyPayout: "₹2,500 / mo",
-                      referredBy: "David Wilson",
-                      children: []
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    }
-  ]
-};
-
 export function HierarchyTab() {
+  const { user } = useAuth();
   const [view, setView] = useState<'flow' | 'grid' | 'list'>('flow');
-  const [selectedNode, setSelectedNode] = useState<NetworkNode | null>(mockNetworkData.children[0].children[0].children[0]); // Default to "John Doe (You)"
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Always use the direct referrer (Amrita Patel) as root, showing the user (John Doe) and user's children
-  const activeRoot = useMemo(() => {
-    const rajeshNode = mockNetworkData.children[0];
-    const amritaNode = rajeshNode.children[0];
-    return amritaNode;
-  }, []);
+  const currentUserNode = useMemo(
+    () => (user ? buildNetworkTreeFromUser(user) : null),
+    [user]
+  );
 
-  const currentUserNode = useMemo(() => {
-    // Current user in this structure is RajesH -> Amrita -> John
-    return mockNetworkData.children[0].children[0].children[0];
-  }, []);
+  const activeRoot = currentUserNode;
+
+  const [selectedNode, setSelectedNode] = useState<NetworkNode | null>(null);
+
+  useEffect(() => {
+    if (currentUserNode) {
+      setSelectedNode(currentUserNode);
+    }
+  }, [currentUserNode]);
 
   // Flatten active root nodes to list all members for quick querying
   const allNodes = useMemo(() => {
+    if (!activeRoot) return [];
     const list: NetworkNode[] = [];
     const traverse = (node: NetworkNode) => {
       list.push(node);
-      if (node.children) {
-        node.children.forEach(traverse);
-      }
+      node.children.forEach(traverse);
     };
     traverse(activeRoot);
     return list;
   }, [activeRoot]);
 
-  // Handle local searching by member names or unique ID
   const filteredNodes = useMemo(() => {
     if (!searchQuery.trim()) return allNodes;
     const query = searchQuery.toLowerCase();
@@ -304,6 +146,14 @@ export function HierarchyTab() {
       node => node.name.toLowerCase().includes(query) || node.id.toLowerCase().includes(query)
     );
   }, [allNodes, searchQuery]);
+
+  if (!user || !currentUserNode || !activeRoot) {
+    return (
+      <div className="text-center py-16 text-muted-foreground text-sm">
+        Sign in to view your network.
+      </div>
+    );
+  }
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 sm:space-y-6 w-full min-w-0">
@@ -315,7 +165,7 @@ export function HierarchyTab() {
             My Network
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Track user relationships from the Gaulaxmi Founder down to the deepest nodes.
+            You are at the center — your profile and direct referrals are shown below.
           </p>
         </div>
       </div>
@@ -417,11 +267,11 @@ export function HierarchyTab() {
                   <strong>Referral Matrix:</strong> This view lists your direct referred network cards recursively grouped by depth. Click on any member to inspect their complete stats in the detail panel.
                 </p>
               </div>
-              <NetworkGrid rootNode={currentUserNode} excludeRoot={true} onSelect={setSelectedNode} searchQuery={searchQuery} />
+              <NetworkGrid rootNode={currentUserNode} excludeRoot={false} onSelect={setSelectedNode} searchQuery={searchQuery} />
             </div>
           ) : (
             <div className="p-6 overflow-y-auto h-full">
-              <NetworkList rootNode={currentUserNode} excludeRoot={true} onSelect={setSelectedNode} searchQuery={searchQuery} />
+              <NetworkList rootNode={currentUserNode} excludeRoot={false} onSelect={setSelectedNode} searchQuery={searchQuery} />
             </div>
           )}
         </div>
@@ -460,14 +310,11 @@ export function HierarchyTab() {
                         <span className="bg-primary text-primary-foreground text-[9px] px-1.5 py-0.5 rounded-full uppercase tracking-wider font-extrabold scale-95">You</span>
                       )}
                     </div>
-                    {selectedNode.id !== activeRoot.id && (
-                      <div className="text-xs text-muted-foreground">{selectedNode.role}</div>
-                    )}
+                    <div className="text-xs text-muted-foreground">{selectedNode.role}</div>
                   </div>
                 </div>
 
-                {selectedNode.id !== activeRoot.id && (
-                  <>
+                <>
                     <hr className="border-stone-100" />
 
                     {/* Info Fields */}
@@ -510,11 +357,7 @@ export function HierarchyTab() {
                         </div>
                       )}
                     </div>
-                  </>
-                )}
 
-                {selectedNode.id !== activeRoot.id && (
-                  <>
                     <hr className="border-stone-100" />
 
                     {/* Investment Stats */}
@@ -549,13 +392,12 @@ export function HierarchyTab() {
                       </div>
                     </div>
 
-                    {selectedNode.status === 'pending' && (
+                    {selectedNode.status === 'pending' && !selectedNode.isCurrentUser && (
                       <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-[#7f4e1c]">
-                        This account is in pending state. Direct monthly ROI will begin to yield as soon as their initial Cow Backed wealth slot is activated.
+                        This referral is still pending. Bonuses credit once their subscription is activated.
                       </div>
                     )}
-                  </>
-                )}
+                </>
               </motion.div>
             </AnimatePresence>
           ) : (
@@ -966,6 +808,19 @@ function FlowTreeView({
                   {rn.node.isCurrentUser ? 'YOU' : `L${rn.level}`}
                 </div>
 
+                <div className="absolute top-[calc(100%+0.5rem)] left-1/2 -translate-x-1/2 w-32 text-center pointer-events-none space-y-0.5">
+                  <span
+                    className={`text-[9px] font-bold leading-tight block truncate ${
+                      rn.node.isCurrentUser ? 'text-[#7f4e1c]' : 'text-stone-800'
+                    }`}
+                  >
+                    {rn.node.isCurrentUser ? `You · ${rn.name}` : rn.name}
+                  </span>
+                  <span className="text-[8px] font-semibold text-stone-500 block">
+                    Level {rn.level}
+                  </span>
+                </div>
+
                 {/* Individual node toggle handle */}
                 {rn.node.children && rn.node.children.length > 0 && (
                   <button
@@ -1011,14 +866,16 @@ function FlowTreeView({
                   {hoveredNode.status}
                 </span>
               </div>
-              <h4 className="font-bold text-sm text-white mt-1 leading-tight">{hoveredNode.name}</h4>
-              {hoveredNode.id !== rootNode.id && (
-                <p className="text-[10px] text-cream/70">{hoveredNode.role}</p>
-              )}
+              <h4 className="font-bold text-sm text-white mt-1 leading-tight">
+                {hoveredNode.name}
+                {hoveredNode.isCurrentUser && (
+                  <span className="ml-1.5 text-[9px] uppercase tracking-wider text-gold font-extrabold">(You)</span>
+                )}
+              </h4>
+              <p className="text-[10px] text-cream/70">{hoveredNode.role}</p>
             </div>
 
-            {hoveredNode.id !== rootNode.id && (
-              <div className="grid grid-cols-2 gap-2 text-[10px] border-t border-cream/10 pt-2 text-cream/90 font-medium">
+            <div className="grid grid-cols-2 gap-2 text-[10px] border-t border-cream/10 pt-2 text-cream/90 font-medium">
                 <div>
                   <span className="text-cream/55 block">MEMBER ID</span>
                   <span className="font-mono">{hoveredNode.id}</span>
@@ -1036,10 +893,8 @@ function FlowTreeView({
                   <span className="truncate block">{hoveredNode.email}</span>
                 </div>
               </div>
-            )}
 
-            {hoveredNode.id !== rootNode.id && (
-              <div className="bg-cream/10 rounded-xl p-2.5 text-[10px] flex items-center justify-between">
+            <div className="bg-cream/10 rounded-xl p-2.5 text-[10px] flex items-center justify-between">
                 <div>
                   <span className="text-cream/60 uppercase text-[8px] tracking-wider block font-bold">Invested In Cows</span>
                   <span className="text-gold font-bold">{hoveredNode.totalInvested}</span>
@@ -1049,7 +904,6 @@ function FlowTreeView({
                   <span className="text-white font-bold">{hoveredNode.monthlyPayout}</span>
                 </div>
               </div>
-            )}
           </motion.div>
         )}
       </AnimatePresence>
