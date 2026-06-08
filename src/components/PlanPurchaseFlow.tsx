@@ -21,6 +21,7 @@ import {
   type FieldErrors,
 } from '../lib/validation';
 import type { DashboardTabId } from '../lib/dashboardNav';
+import { consumeStoredReferrerId, clearStoredReferrerId } from '../lib/referralStorage';
 import {
   type PlanPurchaseStep,
   PLAN_PURCHASE_STEPS,
@@ -112,11 +113,13 @@ export function PlanPurchaseFlow({
       toast.error(Object.values(errors)[0]);
       return;
     }
-    const result = await register(name, email, password);
+    const referrerId = consumeStoredReferrerId() ?? undefined;
+    const result = await register(name, email, password, referrerId);
     if (!result.ok) {
       toast.error(result.message);
       return;
     }
+    if (referrerId) clearStoredReferrerId();
     toast.success('Account created — continue to KYC in the next step');
   };
 

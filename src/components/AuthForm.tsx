@@ -1,23 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mail, Lock, User, ArrowRight, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { toast } from 'react-hot-toast';
 import { validateAuthLogin, validateAuthRegister, type FieldErrors } from '../lib/validation';
+import { consumeStoredReferrerId, clearStoredReferrerId } from '../lib/referralStorage';
 
-export function AuthForm() {
+export function AuthForm({ initialReferrerId }: { initialReferrerId?: string | null }) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
-  const [referralCode, setReferralCode] = useState('');
+  const [referralCode, setReferralCode] = useState(initialReferrerId ?? '');
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const { login, register } = useAuth();
+
+  useEffect(() => {
+    const stored = initialReferrerId ?? consumeStoredReferrerId();
+    if (stored) setReferralCode(stored);
+  }, [initialReferrerId]);
 
   const clearFieldError = (key: string) => {
     setFieldErrors((prev) => {
@@ -55,13 +61,16 @@ export function AuthForm() {
       return;
     }
     setFieldErrors({});
-    const result = await register(name, email, password);
+    const referrerId =
+      referralCode.trim() || consumeStoredReferrerId() || undefined;
+    const result = await register(name, email, password, referrerId);
     if (!result.ok) {
       toast.error(result.message);
       return;
     }
-    if (referralCode.trim()) {
-      toast.success('Account created! Referral code noted for onboarding.');
+    if (referrerId) {
+      clearStoredReferrerId();
+      toast.success('Account created and linked to your referrer!');
     } else {
       toast.success('Account created successfully!');
     }

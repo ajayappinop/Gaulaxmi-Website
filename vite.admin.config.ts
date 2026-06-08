@@ -7,6 +7,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
+const adminEntry = path.resolve(projectRoot, 'admin.html');
 
 /** Serve admin SPA at http://localhost:3001/ */
 function serveAdminAtRoot(): Plugin {
@@ -57,6 +58,12 @@ function renameAdminHtml(): Plugin {
 
 export default defineConfig({
   root: projectRoot,
+  cacheDir: 'node_modules/.vite-admin',
+  envDir: projectRoot,
+
+  optimizeDeps: {
+    entries: [adminEntry],
+  },
 
   plugins: [
     react(),
@@ -78,7 +85,16 @@ export default defineConfig({
     strictPort: true,
 
     watch: {
-      ignored: ['**/server/**', '**/.env', '**/.env.*', '**/server/data/**'],
+      ignored: [
+        '**/server/**',
+        '**/.env',
+        '**/.env.*',
+        '**/server/data/**',
+        '**/dist/**',
+        '**/dist-admin/**',
+        '**/index.html',
+        '**/vite.config.ts',
+      ],
     },
 
     proxy: {

@@ -1,8 +1,17 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../lib/auth';
 import { buildNetworkTreeFromUser, type NetworkNode } from '../lib/networkTree';
+import { computeMemberNetworkSummary } from '../lib/memberNetwork';
+import {
+  MemberNetworkDataPanel,
+  MemberNetworkSummaryCards,
+  NETWORK_DATA_TABS,
+  type NetworkDataTab,
+} from './MemberNetworkOverview';
+import { formatINR } from '../lib/plans';
 import { 
   Users, 
   LayoutGrid, 
@@ -11,7 +20,8 @@ import {
   ZoomIn, 
   ZoomOut, 
   RotateCcw, 
-  Maximize2, 
+  Maximize2,
+  Minimize2,
   IdCard, 
   Phone, 
   Mail, 
@@ -24,7 +34,8 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
-  ChevronDown
+  ChevronDown,
+  IndianRupee,
 } from 'lucide-react';
 
 function Pagination({
@@ -110,7 +121,14 @@ function Pagination({
 export function HierarchyTab() {
   const { user } = useAuth();
   const [view, setView] = useState<'flow' | 'grid' | 'list'>('flow');
+  const [dataTab, setDataTab] = useState<NetworkDataTab>('overview');
+  const [panelMode, setPanelMode] = useState<'details' | 'chart'>('details');
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  const networkSummary = useMemo(
+    () => (user ? computeMemberNetworkSummary(user) : null),
+    [user]
+  );
 
   const currentUserNode = useMemo(
     () => (user ? buildNetworkTreeFromUser(user) : null),
@@ -157,19 +175,96 @@ export function HierarchyTab() {
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 sm:space-y-6 w-full min-w-0">
-      {/* Header and Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 sm:gap-4">
         <div>
           <h2 className="font-display font-bold text-xl sm:text-2xl text-bark flex items-center gap-2 flex-wrap">
             <GitBranch className="w-5 h-5 sm:w-6 sm:h-6 text-primary shrink-0" />
             My Network
           </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            You are at the center — your profile and direct referrals are shown below.
+          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+            Track direct and indirect referrals, see who referred whom, and review all income earned from your network.
           </p>
         </div>
       </div>
 
+      {networkSummary && <MemberNetworkSummaryCards summary={networkSummary} />}
+
+      {/* Data vs chart mode */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex bg-white rounded-xl border border-stone-200 p-1 shadow-sm overflow-x-auto">
+          {NETWORK_DATA_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                setDataTab(tab.id);
+                setPanelMode('details');
+              }}
+              className={`px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                panelMode === 'details' && dataTab === tab.id
+                  ? 'bg-[#7f4e1c] text-white shadow-sm'
+                  : 'text-stone-600 hover:bg-stone-50'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+          <div className="w-px bg-stone-200 mx-1 shrink-0 self-stretch" />
+          <button
+            type="button"
+            onClick={() => setPanelMode('chart')}
+            className={`px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+              panelMode === 'chart'
+                ? 'bg-[#7f4e1c] text-white shadow-sm'
+                : 'text-stone-600 hover:bg-stone-50'
+            }`}
+          >
+            <GitBranch className="w-3.5 h-3.5" /> Flow chart
+          </button>
+        </div>
+
+        {panelMode === 'chart' && (
+          <div className="flex bg-white rounded-xl border border-stone-200 p-1 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setView('flow')}
+              className={`p-2 rounded-lg transition-colors ${view === 'flow' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-stone-50'}`}
+              title="Interactive Flow Chart"
+            >
+              <GitBranch className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('grid')}
+              className={`p-2 rounded-lg transition-colors ${view === 'grid' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-stone-50'}`}
+              title="Grid View"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('list')}
+              className={`p-2 rounded-lg transition-colors ${view === 'list' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-stone-50'}`}
+              title="List View"
+            >
+              <List className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {panelMode === 'details' && networkSummary ? (
+        <div className="bg-white border border-stone-200 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-sm">
+          <MemberNetworkDataPanel
+            summary={networkSummary}
+            dataTab={dataTab}
+            referrals={user?.referrals ?? []}
+            viewerName={user?.name ?? 'Member'}
+          />
+        </div>
+      ) : (
+        <>
       {/* Search Bar Block with Matching Stats */}
       <div className="bg-white border border-stone-200 rounded-2xl p-4 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 shadow-sm">
         <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
@@ -191,33 +286,6 @@ export function HierarchyTab() {
                 <X className="w-4 h-4" />
               </button>
             )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            {/* View Toggles */}
-            <div className="flex bg-white rounded-xl border border-stone-200 p-1 shadow-sm">
-              <button
-                onClick={() => setView('flow')}
-                className={`p-2 rounded-lg transition-colors ${view === 'flow' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-stone-50'}`}
-                title="Interactive Flow Chart"
-              >
-                <GitBranch className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setView('grid')}
-                className={`p-2 rounded-lg transition-colors ${view === 'grid' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-stone-50'}`}
-                title="Dashboard Grid View"
-              >
-                <LayoutGrid className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setView('list')}
-                className={`p-2 rounded-lg transition-colors ${view === 'list' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-stone-50'}`}
-                title="Indented List View"
-              >
-                <List className="w-4 h-4" />
-              </button>
-            </div>
           </div>
         </div>
 
@@ -264,10 +332,16 @@ export function HierarchyTab() {
               <div className="bg-amber-50/50 border border-amber-200/50 rounded-2xl p-4 flex items-start gap-3">
                 <Info className="w-5 h-5 text-[#7f4e1c] mt-0.5 shrink-0" />
                 <p className="text-xs text-[#7f4e1c] leading-relaxed">
-                  <strong>Referral Matrix:</strong> This view lists your direct referred network cards recursively grouped by depth. Click on any member to inspect their complete stats in the detail panel.
+                  <strong>Referral Matrix:</strong> Your profile appears first, followed by direct and indirect referrals. Click any card to inspect details.
                 </p>
               </div>
-              <NetworkGrid rootNode={currentUserNode} excludeRoot={false} onSelect={setSelectedNode} searchQuery={searchQuery} />
+              <NetworkGrid
+                rootNode={currentUserNode}
+                excludeRoot={false}
+                onSelect={setSelectedNode}
+                searchQuery={searchQuery}
+                networkSummary={networkSummary}
+              />
             </div>
           ) : (
             <div className="p-6 overflow-y-auto h-full">
@@ -360,6 +434,32 @@ export function HierarchyTab() {
 
                     <hr className="border-stone-100" />
 
+                    {/* Referral earnings */}
+                    {!selectedNode.isCurrentUser && (
+                      <div className="bg-emerald-50/60 border border-emerald-200/60 rounded-2xl p-4 space-y-2">
+                        <div className="flex items-center gap-2 text-emerald-800">
+                          <IndianRupee className="w-4 h-4" />
+                          <span className="text-xs font-bold uppercase tracking-wide">Your earnings from this member</span>
+                        </div>
+                        <p className="text-2xl font-display font-bold text-emerald-700">
+                          {formatINR(selectedNode.bonusEarned ?? 0)}
+                        </p>
+                      </div>
+                    )}
+
+                    {selectedNode.isCurrentUser && networkSummary && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-[#fcfaf7] border border-stone-200/60 rounded-xl p-3">
+                          <p className="text-[10px] uppercase font-bold text-stone-400">Network earned</p>
+                          <p className="font-bold text-[#7f4e1c]">{formatINR(networkSummary.totalNetworkEarnings)}</p>
+                        </div>
+                        <div className="bg-[#fcfaf7] border border-stone-200/60 rounded-xl p-3">
+                          <p className="text-[10px] uppercase font-bold text-stone-400">Team size</p>
+                          <p className="font-bold text-stone-800">{networkSummary.totalNetworkSize}</p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Investment Stats */}
                     <div className="bg-[#fcfaf7] border border-stone-200/60 rounded-2xl p-4 space-y-3">
                       <div className="flex justify-between items-center text-xs">
@@ -390,6 +490,14 @@ export function HierarchyTab() {
                           <Users className="w-3.5 h-3.5 text-stone-500" /> {selectedNode.totalReferrals} members
                         </span>
                       </div>
+                      {selectedNode.referredNames && selectedNode.referredNames.length > 0 && (
+                        <div className="pt-2 border-t border-stone-200/50 text-xs">
+                          <span className="text-muted-foreground block mb-1">They referred:</span>
+                          <p className="font-medium text-stone-700 leading-relaxed">
+                            {selectedNode.referredNames.join(', ')}
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     {selectedNode.status === 'pending' && !selectedNode.isCurrentUser && (
@@ -408,6 +516,8 @@ export function HierarchyTab() {
           )}
         </div>
       </div>
+        </>
+      )}
     </motion.div>
   );
 }
@@ -452,9 +562,28 @@ function FlowTreeView({
   const [hoveredNode, setHoveredNode] = useState<NetworkNode | null>(null);
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [showReferralBadges, setShowReferralBadges] = useState<boolean>(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Set of collapsed node IDs representing nodes that hide their babies
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsFullscreen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isFullscreen]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -616,7 +745,11 @@ function FlowTreeView({
     }
   };
 
-  return (
+  const stopCanvasDrag = (e: React.MouseEvent) => {
+    e.stopPropagation();
+  };
+
+  const flowChart = (
     <div 
       ref={containerRef}
       className={`relative w-full h-full overflow-hidden select-none bg-stone-50/70 ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
@@ -628,6 +761,8 @@ function FlowTreeView({
       {/* Zoom control HUD */}
       <div className="absolute bottom-5 left-5 z-20 flex flex-wrap items-center bg-white border border-stone-200/80 rounded-xl p-1.5 shadow-md gap-1">
         <button 
+          type="button"
+          onMouseDown={stopCanvasDrag}
           onClick={zoomIn} 
           className="p-2 rounded-lg hover:bg-stone-100 text-stone-600 hover:text-stone-900 transition-colors"
           title="Zoom In"
@@ -635,6 +770,8 @@ function FlowTreeView({
           <ZoomIn className="w-4 h-4" />
         </button>
         <button 
+          type="button"
+          onMouseDown={stopCanvasDrag}
           onClick={zoomOut} 
           className="p-2 rounded-lg hover:bg-stone-100 text-stone-600 hover:text-stone-900 transition-colors"
           title="Zoom Out"
@@ -643,6 +780,8 @@ function FlowTreeView({
         </button>
         <div className="h-4 w-[1px] bg-stone-200 mx-1" />
         <button 
+          type="button"
+          onMouseDown={stopCanvasDrag}
           onClick={resetZoom} 
           className="p-2 rounded-lg hover:bg-stone-100 text-stone-600 hover:text-stone-900 transition-colors flex items-center gap-1.5 text-xs font-semibold"
           title="Reset Canvas View"
@@ -651,6 +790,8 @@ function FlowTreeView({
         </button>
         <div className="h-4 w-[1px] bg-stone-200 mx-1" />
         <button 
+          type="button"
+          onMouseDown={stopCanvasDrag}
           onClick={toggleAll}
           className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
             collapsedNodeIds.size > 0 
@@ -664,6 +805,8 @@ function FlowTreeView({
         </button>
         <div className="h-4 w-[1px] bg-stone-200 mx-1" />
         <button 
+          type="button"
+          onMouseDown={stopCanvasDrag}
           onClick={() => setShowReferralBadges(!showReferralBadges)} 
           className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
             showReferralBadges 
@@ -675,22 +818,28 @@ function FlowTreeView({
           <Users className="w-3.5 h-3.5" /> 
           Referrals: {showReferralBadges ? 'ON' : 'OFF'}
         </button>
+        <div className="h-4 w-[1px] bg-stone-200 mx-1" />
+        <button
+          type="button"
+          onMouseDown={stopCanvasDrag}
+          onClick={() => setIsFullscreen((open) => !open)}
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors hover:bg-stone-100 text-[#7f4e1c] hover:text-[#5e3813]"
+          title={isFullscreen ? 'Exit fullscreen' : 'Expand flow chart to fullscreen'}
+        >
+          {isFullscreen ? (
+            <>
+              <Minimize2 className="w-3.5 h-3.5" /> Exit fullscreen
+            </>
+          ) : (
+            <>
+              <Maximize2 className="w-3.5 h-3.5" /> Fullscreen
+            </>
+          )}
+        </button>
       </div>
 
       <div className="absolute top-5 left-5 z-20 bg-stone-900/5 text-stone-800 text-[10px] px-3 py-1.5 rounded-full font-medium border border-stone-900/10 backdrop-blur-md font-sans">
-        💡 Drag the canvas to pan · Use controls to Zoom
-      </div>
-
-      {/* Floating Toggle All Button on the right of the container */}
-      <div className="absolute top-5 right-5 z-20">
-        <button
-          onClick={toggleAll}
-          className="px-3.5 py-1.5 bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-400 text-[#7f4e1c] hover:text-[#5e3813] rounded-xl text-xs font-bold shadow-md flex items-center gap-1.5 transition cursor-pointer"
-          title="Collapse or expand all hierarchy levels at once"
-        >
-          <GitBranch className="w-3.5 h-3.5 text-[#7f4e1c]" />
-          Toggle All ({collapsedNodeIds.size > 0 ? 'Expand All' : 'Collapse All'})
-        </button>
+        💡 Drag to pan · Scroll to zoom{isFullscreen ? ' · Esc to exit' : ''}
       </div>
 
       {/* Canvas viewport space */}
@@ -909,6 +1058,40 @@ function FlowTreeView({
       </AnimatePresence>
     </div>
   );
+
+  if (isFullscreen) {
+    return createPortal(
+      <div
+        className="fixed inset-0 z-[250] flex flex-col bg-[#f5f0e8]"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Network flow chart fullscreen"
+      >
+        <div className="shrink-0 flex items-center justify-between gap-3 px-4 sm:px-6 py-3 bg-white border-b border-stone-200 shadow-sm">
+          <div className="min-w-0">
+            <h3 className="font-display font-bold text-base sm:text-lg text-stone-900 truncate">
+              My Network — Flow Chart
+            </h3>
+            <p className="text-xs text-stone-500 truncate">
+              Pan, zoom, and explore your referral tree in fullscreen
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsFullscreen(false)}
+            className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#7f4e1c] hover:bg-[#6c4217] text-white text-xs font-bold shadow-sm transition-colors"
+          >
+            <Minimize2 className="w-4 h-4" />
+            Exit fullscreen
+          </button>
+        </div>
+        <div className="flex-1 min-h-0 relative">{flowChart}</div>
+      </div>,
+      document.body
+    );
+  }
+
+  return flowChart;
 }
 
 // ------------------------------------------------------------
@@ -918,12 +1101,14 @@ function NetworkGrid({
   rootNode, 
   onSelect,
   searchQuery = '',
-  excludeRoot = false
+  excludeRoot = false,
+  networkSummary = null,
 }: { 
   rootNode: NetworkNode; 
   onSelect: (node: NetworkNode) => void;
   searchQuery?: string;
   excludeRoot?: boolean;
+  networkSummary?: ReturnType<typeof computeMemberNetworkSummary> | null;
 }) {
   // Convert full hierarchy object into horizontal grid layout levels
   const flattenNodes = (node: NetworkNode, result: NetworkNode[] = []): NetworkNode[] => {
@@ -965,46 +1150,99 @@ function NetworkGrid({
           key={node.id} 
           onClick={() => onSelect(node)}
           className={`border rounded-2xl p-4 cursor-pointer transition-all duration-200 group relative overflow-hidden ${
-            isMatched 
-            ? 'border-[#7f4e1c] bg-amber-50/30 hover:bg-amber-50 ring-2 ring-[#7f4e1c]/10' 
-            : 'border-stone-200 hover:border-stone-400 bg-stone-50/50 hover:bg-stone-50'
+            node.isCurrentUser
+              ? 'border-[#7f4e1c]/40 bg-gradient-to-br from-[#fcfaf7] to-amber-50/40 hover:border-[#7f4e1c]/60 ring-1 ring-[#7f4e1c]/10'
+              : isMatched 
+              ? 'border-[#7f4e1c] bg-amber-50/30 hover:bg-amber-50 ring-2 ring-[#7f4e1c]/10' 
+              : 'border-stone-200 hover:border-stone-400 bg-stone-50/50 hover:bg-stone-50'
           }`}
         >
           {node.isCurrentUser && (
             <div className="absolute top-0 right-0 bg-[#7f4e1c] text-white text-[8px] px-2.5 py-0.5 rounded-bl-xl font-bold uppercase tracking-wider">YOU</div>
           )}
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${
               isMatched
               ? 'bg-amber-100 text-[#7f4e1c]'
               : node.isCurrentUser 
-              ? 'bg-primary/20 text-[#7f4e1c]' 
+              ? 'bg-primary/20 text-[#7f4e1c] ring-2 ring-[#7f4e1c]/20' 
               : node.status === 'active' 
               ? 'bg-emerald-50 text-emerald-700' 
               : 'bg-amber-50 text-amber-700'
             }`}>
               {node.name.charAt(0)}
             </div>
-            <div>
-              <h4 className="font-bold text-sm text-bark mb-0.5 group-hover:text-stone-900">{node.name}</h4>
-              {node.id !== rootNode.id && (
-                <div className="text-[10px] text-muted-foreground font-mono">{node.id} · Level {node.level}</div>
+            <div className="min-w-0">
+              <h4 className="font-bold text-sm text-bark mb-0.5 group-hover:text-stone-900 truncate">{node.name}</h4>
+              <div className="text-[10px] text-muted-foreground font-mono truncate">
+                {node.id} · Level {node.level}
+                {node.isCurrentUser && ' · Root'}
+              </div>
+              {node.role && (
+                <p className="text-[10px] text-stone-500 mt-0.5 truncate">{node.role}</p>
               )}
             </div>
           </div>
 
-          {node.id !== rootNode.id && (
-            <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-stone-200/50 text-[11px]">
-              <div>
-                <span className="text-muted-foreground block text-[9px] uppercase">Plan status</span>
-                <span className={`font-semibold capitalize ${node.status === 'active' ? 'text-emerald-700' : 'text-amber-700'}`}>{node.status}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block text-[9px] uppercase">Cow Slots</span>
-                <span className="font-semibold text-stone-700">{node.totalInvested}</span>
-              </div>
-            </div>
-          )}
+          <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-stone-200/50 text-[11px]">
+            {node.isCurrentUser ? (
+              <>
+                <div>
+                  <span className="text-muted-foreground block text-[9px] uppercase">Status</span>
+                  <span className={`font-semibold capitalize ${node.status === 'active' ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {node.status}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[9px] uppercase">Joined</span>
+                  <span className="font-semibold text-stone-700">{node.joinDate}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[9px] uppercase">Your investment</span>
+                  <span className="font-semibold text-stone-700">{node.totalInvested}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[9px] uppercase">Direct referrals</span>
+                  <span className="font-semibold text-stone-700">{node.totalReferrals}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[9px] uppercase">Network size</span>
+                  <span className="font-semibold text-stone-700">
+                    {networkSummary?.totalNetworkSize ?? node.children.length}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[9px] uppercase">Total earned</span>
+                  <span className="font-semibold text-emerald-700">
+                    {formatINR(networkSummary?.totalNetworkEarnings ?? node.bonusEarned ?? 0)}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <span className="text-muted-foreground block text-[9px] uppercase">Plan status</span>
+                  <span className={`font-semibold capitalize ${node.status === 'active' ? 'text-emerald-700' : 'text-amber-700'}`}>{node.status}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[9px] uppercase">Investment</span>
+                  <span className="font-semibold text-stone-700">{node.totalInvested}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[9px] uppercase">You earned</span>
+                  <span className="font-semibold text-emerald-700">
+                    {node.bonusEarned > 0 ? formatINR(node.bonusEarned) : '₹0'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[9px] uppercase">They referred</span>
+                  <span className="font-semibold text-stone-700">
+                    {node.totalReferrals > 0 ? node.totalReferrals : '—'}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       );
       })}

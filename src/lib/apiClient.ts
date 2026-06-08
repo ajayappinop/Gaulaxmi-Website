@@ -22,15 +22,44 @@ import type { KycDetails } from './auth';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
-const TOKEN_KEY = 'gaulaxmi_token';
+const ADMIN_TOKEN_KEY = 'gaulaxmi_admin_token';
+const MEMBER_TOKEN_KEY = 'gaulaxmi_member_token';
+const LEGACY_TOKEN_KEY = 'gaulaxmi_token';
+
+/** True when bundled for the admin panel (vite --mode admin). */
+export function isAdminApp(): boolean {
+  return import.meta.env.MODE === 'admin';
+}
+
+function activeTokenKey(): string {
+  return isAdminApp() ? ADMIN_TOKEN_KEY : MEMBER_TOKEN_KEY;
+}
+
+function readToken(key: string): string | null {
+  const value = localStorage.getItem(key);
+  if (value) return value;
+
+  const legacy = localStorage.getItem(LEGACY_TOKEN_KEY);
+  if (!legacy) return null;
+
+  localStorage.setItem(key, legacy);
+  localStorage.removeItem(LEGACY_TOKEN_KEY);
+  return legacy;
+}
 
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return readToken(activeTokenKey());
 }
 
 export function setToken(token: string | null): void {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+  const key = activeTokenKey();
+  if (token) localStorage.setItem(key, token);
+  else localStorage.removeItem(key);
+}
+
+/** Store member JWT from admin impersonation without touching the admin session token. */
+export function setMemberHandoffToken(token: string): void {
+  localStorage.setItem(MEMBER_TOKEN_KEY, token);
 }
 
 export class ApiError extends Error {
@@ -84,11 +113,11 @@ export const api = {
   getPlans: () => request<InvestmentPlan[]>('/plans', { auth: false }),
   getMilestones: () => request<MilestoneTier[]>('/milestones', { auth: false }),
 
-  register: (name: string, email: string, password: string) =>
+  register: (name: string, email: string, password: string, referrerId?: string) =>
     request<AuthResponse>('/auth/register', {
       method: 'POST',
       auth: false,
-      body: JSON.stringify({ name, email, password }),
+      body: JSON.stringify({ name, email, password, referrerId }),
     }),
 
   login: (email: string, password: string) =>

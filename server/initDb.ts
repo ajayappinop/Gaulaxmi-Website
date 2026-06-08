@@ -3,6 +3,7 @@ import { buildSeedDatabase } from './seed.js';
 import { DEFAULT_PLANS } from './defaultPlans.js';
 import { DEFAULT_MILESTONES } from './defaultMilestones.js';
 import { backfillKycHistory } from './services/kycHistory.js';
+import { rebuildReferralTrees, migrateReferralData } from './services/referrals.js';
 import { ensurePaymentSettings } from './services/paymentSettings.js';
 import { DEFAULT_PAYMENT_SETTINGS } from './defaultPaymentSettings.js';
 import {
@@ -17,7 +18,8 @@ export async function initDb(): Promise<void> {
   if (await store.isEmpty()) {
     const seed = await buildSeedDatabase();
     await store.seed(seed);
-    console.log('[db] Seeded users, plans, and milestones');
+    await rebuildReferralTrees();
+    console.log('[db] Seeded users, plans, milestones, and referral network');
     return;
   }
 
@@ -104,4 +106,7 @@ export async function initDb(): Promise<void> {
   if (rolesChanged > 0) {
     console.log('[db] Migrated admin roles and permissions');
   }
+
+  await migrateReferralData();
+  console.log('[db] Synced referral trees from referredByUserId links');
 }

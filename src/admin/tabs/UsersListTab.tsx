@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Users } from 'lucide-react';
 import type { User } from '../../lib/auth';
 import { formatINR } from '../../lib/plans';
@@ -22,6 +22,7 @@ import {
 import { useAdminTable } from '../hooks/useAdminTable';
 import { adminTableControlProps } from '../components/AdminTableToolbar';
 import { memberHasActivityInRange, memberLatestActivityDate } from '../../lib/tableControls';
+import { getNetworkQuickStats } from '../../lib/memberNetwork';
 
 function countWalletTx(user: User, type: 'deposit' | 'withdrawal', status?: string) {
   return (user.transactions || []).filter(
@@ -36,6 +37,14 @@ export function UsersListTab({
   members: User[];
   onViewMember: (userId: string) => void;
 }) {
+  const networkStatsById = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof getNetworkQuickStats>>();
+    for (const m of members) {
+      map.set(m.id, getNetworkQuickStats(m));
+    }
+    return map;
+  }, [members]);
+
   const table = useAdminTable({
     items: members,
     searchFn: (m, q) =>
@@ -61,7 +70,7 @@ export function UsersListTab({
     <div className="space-y-4">
       <AdminPageHeader
         title="Users"
-        subtitle="All member accounts — open Details for the full profile and admin actions"
+        subtitle="All member accounts — network size and referral income at a glance; open Details for the full profile"
         icon={Users}
       />
       <AdminTableToolbar
@@ -86,13 +95,16 @@ export function UsersListTab({
         {...adminTableControlProps(table)}
       />
       <AdminTableCard>
-        <AdminTable minWidth="min-w-[960px]">
+        <AdminTable minWidth="min-w-[1120px]">
           <AdminThead>
             <tr>
               <AdminTh>Member</AdminTh>
               <AdminTh>Phone</AdminTh>
               <AdminTh>KYC</AdminTh>
               <AdminTh>Account</AdminTh>
+              <AdminTh align="right">Direct refs</AdminTh>
+              <AdminTh align="right">Network</AdminTh>
+              <AdminTh align="right">Ref. income</AdminTh>
               <AdminTh align="right">Balance</AdminTh>
               <AdminTh align="right">Plans</AdminTh>
               <AdminTh align="right">Pending dep.</AdminTh>
@@ -102,9 +114,11 @@ export function UsersListTab({
           </AdminThead>
           <AdminTbody>
             {table.paginated.length === 0 ? (
-              <AdminEmptyRow colSpan={9} message="No members match your filters." />
+              <AdminEmptyRow colSpan={12} message="No members match your filters." />
             ) : (
-              table.paginated.map((m) => (
+              table.paginated.map((m) => {
+                const net = networkStatsById.get(m.id);
+                return (
                 <AdminTr key={m.id}>
                   <AdminTd>
                     <AdminMemberCell
@@ -130,6 +144,20 @@ export function UsersListTab({
                       {m.isDeactivated ? 'Deactivated' : 'Active'}
                     </AdminBadge>
                   </AdminTd>
+                  <AdminTd align="right" className="text-stone-700 tabular-nums">
+                    {net?.directCount ?? 0}
+                  </AdminTd>
+                  <AdminTd align="right" className="text-stone-700 tabular-nums">
+                    {net?.totalNetworkSize ?? 0}
+                    {(net?.indirectCount ?? 0) > 0 && (
+                      <span className="block text-[10px] text-stone-400">
+                        {net?.indirectCount} indirect
+                      </span>
+                    )}
+                  </AdminTd>
+                  <AdminTd align="right">
+                    <AdminMoney amount={formatINR(net?.totalEarnings ?? 0)} />
+                  </AdminTd>
                   <AdminTd align="right">
                     <AdminMoney amount={formatINR(m.balance)} />
                   </AdminTd>
@@ -146,7 +174,8 @@ export function UsersListTab({
                     <AdminDetailsButton onClick={() => onViewMember(m.id)} />
                   </AdminTd>
                 </AdminTr>
-              ))
+              );
+              })
             )}
           </AdminTbody>
         </AdminTable>

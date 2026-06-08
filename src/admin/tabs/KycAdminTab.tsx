@@ -8,6 +8,7 @@ import { useTableList } from '../../hooks/useTableList';
 import { AdminPageHeader } from '../components/AdminPageHeader';
 import { adminTypography } from '../adminTheme';
 import { AdminMemberNameLink } from '../components/AdminDataTable';
+import { AdminKycDetailsPanel } from '../components/AdminKycDetailsPanel';
 
 type StatusFilter = 'all' | 'submitted' | 'verified' | 'rejected';
 
@@ -214,32 +215,12 @@ export function KycAdminTab({
 
               {isExpanded && (
                 <div className="px-4 pb-4 sm:px-5 sm:pb-5 border-t border-stone-200 pt-4 space-y-4">
-                  <dl className="grid sm:grid-cols-2 gap-3 text-xs text-stone-600">
-                    <div>
-                      <span className="text-stone-500 block">Document</span>
-                      {row.details.docType}: {row.details.docNumber}
-                    </div>
-                    <div>
-                      <span className="text-stone-500 block">Phone</span>
-                      {row.details.phone}
-                    </div>
-                    <div className="sm:col-span-2">
-                      <span className="text-stone-500 block">Address</span>
-                      {row.details.address}, {row.details.city}, {row.details.state} — {row.details.pincode}
-                    </div>
-                    {row.reviewedBy && (
-                      <div>
-                        <span className="text-stone-500 block">Reviewed by</span>
-                        {row.reviewedBy}
-                      </div>
-                    )}
-                    {row.rejectionReason && (
-                      <div className="sm:col-span-2">
-                        <span className="text-stone-500 block">Rejection reason</span>
-                        <p className="text-red-300 mt-0.5">{row.rejectionReason}</p>
-                      </div>
-                    )}
-                  </dl>
+                  <AdminKycDetailsPanel
+                    details={row.details}
+                    reviewedBy={row.reviewedBy}
+                    reviewedAt={row.reviewedAt}
+                    rejectionReason={row.rejectionReason}
+                  />
 
                   {row.status === 'submitted' && (
                     <div className="flex flex-wrap gap-2 pt-2">

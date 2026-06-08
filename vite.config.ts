@@ -5,13 +5,19 @@ import { fileURLToPath } from 'url';
 import {defineConfig} from 'vite';
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
+const memberEntry = path.resolve(projectRoot, 'index.html');
 
 export default defineConfig({
+  cacheDir: 'node_modules/.vite-member',
+  envDir: projectRoot,
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       '@': projectRoot,
     },
+  },
+  optimizeDeps: {
+    entries: [memberEntry],
   },
   server: {
     port: 3000,
@@ -19,7 +25,17 @@ export default defineConfig({
     host: true,
     open: '/',
     watch: {
-      ignored: ['**/server/**', '**/.env', '**/server/data/**'],
+      ignored: [
+        '**/server/**',
+        '**/.env',
+        '**/.env.*',
+        '**/server/data/**',
+        '**/dist/**',
+        '**/dist-admin/**',
+        '**/admin.html',
+        '**/vite.admin.config.ts',
+        '**/src/admin/**',
+      ],
     },
     proxy: {
       '/api': {

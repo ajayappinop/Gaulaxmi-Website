@@ -4,6 +4,10 @@ import { getStore } from '../store/index.js';
 import { newId, toPublicUser } from '../utils.js';
 import { computePlanReturns } from '../defaultPlans.js';
 import { appendKycSubmission, kycCertificateId } from './kycHistory.js';
+import {
+  processReferralBonusesOnInvestment,
+  syncReferralSnapshotsForUser,
+} from './referrals.js';
 
 export { kycCertificateId };
 
@@ -36,7 +40,7 @@ export async function recordInvestment(
   plan: InvestmentPlan,
   details?: string
 ): Promise<User | null> {
-  return mutateUser(userId, (u) => {
+  const result = await mutateUser(userId, (u) => {
     const amount = plan.amount;
     if (u.balance < amount) throw new Error('Insufficient balance');
     const inv = {
@@ -58,6 +62,13 @@ export async function recordInvestment(
     u.investments = [...(u.investments || []), inv];
     u.transactions = [tx, ...(u.transactions || [])];
   });
+
+  if (result) {
+    await processReferralBonusesOnInvestment(userId);
+    await syncReferralSnapshotsForUser(userId);
+  }
+
+  return result;
 }
 
 export function buildPlanFromBody(body: {

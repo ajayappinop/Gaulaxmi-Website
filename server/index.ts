@@ -141,7 +141,7 @@ app.post(
 app.post(
   '/api/auth/register',
   asyncHandler(async (req, res) => {
-    const { name, email, password } = req.body ?? {};
+    const { name, email, password, referrerId, referralCode } = req.body ?? {};
     if (!name?.trim() || !email?.trim() || !password || String(password).length < 6) {
       return res.status(400).json({ error: 'Valid name, email, and password (6+ chars) required' });
     }
@@ -150,29 +150,17 @@ app.post(
       return res.status(409).json({ error: 'An account with this email already exists' });
     }
     const passwordHash = await bcrypt.hash(String(password), 10);
-    const id = newId('usr_');
-    const newUser: DbUser = {
-      id,
-      role: 'member',
+    const { registerMemberWithReferral } = await import('./services/referrals.js');
+    const newUser = await registerMemberWithReferral({
       name: String(name).trim(),
       email: normalized,
       passwordHash,
-      balance: 0,
-      walletAddress: walletAddress(),
-      isKycVerified: false,
-      kycStatus: 'not_started',
-      investments: [],
-      transactions: [],
-      referrals: [
-        { id: '1', friendName: 'Rahul Kumar', status: 'active', bonusEarned: 5000 },
-        { id: '2', friendName: 'Priya Singh', status: 'pending', bonusEarned: 0 },
-      ],
-      referralLink: `https://gaulaxmi.com/ref/${id}`,
-      phone: '',
-    };
-    await getStore().insertUser(newUser);
-    const token = signToken(newUser);
-    res.status(201).json({ token, user: toPublicUser(newUser) });
+      referrerId: referrerId ?? referralCode ?? null,
+    });
+    const dbUser = await findDbUser(newUser.id);
+    if (!dbUser) return res.status(500).json({ error: 'Registration failed' });
+    const token = signToken(dbUser);
+    res.status(201).json({ token, user: newUser });
   })
 );
 
@@ -188,14 +176,22 @@ app.post(
     if (user.isDeactivated) return res.status(403).json({ error: 'Account deactivated' });
     const ok = await bcrypt.compare(String(password), user.passwordHash);
     if (!ok) return res.status(401).json({ error: 'Incorrect password' });
+    const { syncReferralsForUserFromDb } = await import('./services/referrals.js');
+    const synced = await syncReferralsForUserFromDb(user.id);
     const token = signToken(user);
-    res.json({ token, user: toPublicUser(user) });
+    res.json({ token, user: toPublicUser(synced ?? user) });
   })
 );
 
-app.get('/api/auth/me', asyncHandler(requireAuth), (req, res) => {
-  res.json(req.publicUser);
-});
+app.get(
+  '/api/auth/me',
+  asyncHandler(requireAuth),
+  asyncHandler(async (req, res) => {
+    const { syncReferralsForUserFromDb } = await import('./services/referrals.js');
+    const synced = await syncReferralsForUserFromDb(req.auth!.userId);
+    res.json(toPublicUser(synced ?? req.dbUser!));
+  })
+);
 
 app.patch(
   '/api/auth/profile',
@@ -489,8 +485,13 @@ app.get(
   '/api/admin/users',
   asyncHandler(requireAdmin),
   asyncHandler(async (_req, res) => {
-    const users = await getStore().listUsers();
-    res.json(users.map(toPublicUser));
+    const { syncReferralsForUserFromDb } = await import('./services/referrals.js');
+    const store = getStore();
+    const users = await store.listUsers();
+    const members = users.filter((u) => u.role === 'member' && !isAdminUser(u));
+    await Promise.all(members.map((m) => syncReferralsForUserFromDb(m.id)));
+    const refreshed = await store.listUsers();
+    res.json(refreshed.map(toPublicUser));
   })
 );
 

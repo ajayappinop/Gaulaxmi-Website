@@ -14,7 +14,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import type { Referral, Transaction, User } from '../../lib/auth';
+import type { Transaction, User } from '../../lib/auth';
 import { formatINR } from '../../lib/plans';
 import { buildPortfolioProgress } from '../../lib/investmentProgress';
 import { PLAN_MONTHLY_RATE, PLAN_TENURE_MONTHS } from '../../lib/planStore';
@@ -26,6 +26,9 @@ import { AdminBadge, kycBadgeTone } from '../components/AdminDataTable';
 import { AdminConfirmDialog } from '../components/AdminConfirmDialog';
 import { AdminTransactionDetailModal } from '../components/AdminTransactionDetailModal';
 import { AdminDetailsButton } from '../components/AdminDetailsButton';
+import { AdminKycDetailsPanel } from '../components/AdminKycDetailsPanel';
+import { AdminMemberNetworkPanel } from '../components/AdminMemberNetworkPanel';
+import { computeMemberNetworkSummary } from '../../lib/memberNetwork';
 import { TablePagination } from '../../components/TablePagination';
 import { TableDateSortControls } from '../../components/TableDateSortControls';
 import { useTableList } from '../../hooks/useTableList';
@@ -52,7 +55,7 @@ const MEMBER_DETAIL_TABS: {
   { id: 'profile', label: 'Profile & KYC', icon: ShieldCheck },
   { id: 'investments', label: 'Investments & ROI', icon: TrendingUp },
   { id: 'transactions', label: 'Transactions', icon: Receipt },
-  { id: 'referrals', label: 'Referrals', icon: Users },
+  { id: 'referrals', label: 'Referrals & network', icon: Users },
   { id: 'admin', label: 'Admin actions', icon: Settings },
 ];
 
@@ -136,10 +139,8 @@ export function MemberDetailTab({
     };
   }, [allTransactions]);
 
-  const referrals = user.referrals ?? [];
-  const activeReferrals = referrals.filter((r) => r.status === 'active').length;
-  const pendingReferrals = referrals.filter((r) => r.status === 'pending').length;
-  const totalReferralBonus = referrals.reduce((sum, r) => sum + (r.bonusEarned || 0), 0);
+  const networkSummary = useMemo(() => computeMemberNetworkSummary(user), [user]);
+  const totalReferralBonus = networkSummary.totalNetworkEarnings;
 
   const investmentsList = useTableList<(typeof portfolio.rows)[number]>({
     items: portfolio.rows,
@@ -152,12 +153,6 @@ export function MemberDetailTab({
     pageSize: 10,
     filterFn: (t, f) => f === 'all' || t.type === f,
     getItemDate: (t) => t.date,
-  });
-
-  const referralsList = useTableList<Referral>({
-    items: referrals,
-    pageSize: 8,
-    getSortValue: (ref) => ref.friendName.toLowerCase(),
   });
 
   const handleConfirmAction = async () => {
@@ -201,7 +196,12 @@ export function MemberDetailTab({
     try {
       const { token } = await api.adminImpersonateMember(user.id);
       const url = buildMemberDashboardHandoffUrl(token, 'overview');
-      window.open(url, '_blank', 'noopener,noreferrer');
+      const opened = window.open(url, '_blank');
+      if (!opened) {
+        toast.error('Pop-up blocked. Allow pop-ups for this site, then try again.');
+        return;
+      }
+      opened.opener = null;
       toast.success(`Opening dashboard as ${user.name}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not sign in as member');
@@ -297,7 +297,12 @@ export function MemberDetailTab({
                 value: formatINR(portfolio.earnedToDate),
                 icon: TrendingUp,
               },
-              { label: 'Referrals', value: String(referrals.length), icon: Users },
+              { label: 'Referrals', value: String(networkSummary.totalNetworkSize), icon: Users },
+              {
+                label: 'Referral income',
+                value: formatINR(networkSummary.totalNetworkEarnings),
+                icon: Users,
+              },
               {
                 label: 'Transactions',
                 value: String(allTransactions.length),
@@ -334,6 +339,10 @@ export function MemberDetailTab({
                 label="Pending deposit / withdrawal"
                 value={`${formatINR(txTotals.pendingDeposits)} / ${formatINR(txTotals.pendingWithdrawals)}`}
               />
+              <DetailField
+                label="Referral network"
+                value={`${networkSummary.directCount} direct · ${networkSummary.indirectCount} indirect · ${formatINR(networkSummary.totalNetworkEarnings)} earned`}
+              />
               <DetailField label="Referral bonuses" value={formatINR(totalReferralBonus)} />
               <DetailField
                 label="Program terms"
@@ -354,6 +363,14 @@ export function MemberDetailTab({
               <DetailField label="Phone" value={user.phone || '—'} />
               <DetailField label="Wallet address" value={user.walletAddress} mono />
               <DetailField label="Referral link" value={user.referralLink || '—'} mono />
+              <DetailField
+                label="Referred by"
+                value={
+                  user.referredByName
+                    ? `${user.referredByName}${user.referredByUserId ? ` (${user.referredByUserId})` : ''}`
+                    : '—'
+                }
+              />
               <DetailField label="Member ID" value={user.id} mono />
             </dl>
           </section>
@@ -383,26 +400,7 @@ export function MemberDetailTab({
           {user.kycDetails && (
             <section className={`${adminCard} p-5 space-y-4`}>
               <h3 className={adminTypography.sectionTitle}>Submitted KYC details</h3>
-              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <DetailField label="Legal name" value={user.kycDetails.fullName} />
-                <DetailField label="Date of birth" value={user.kycDetails.dob} />
-                <DetailField label="Gender" value={user.kycDetails.gender} />
-                <DetailField label="Phone (KYC)" value={user.kycDetails.phone} />
-                <DetailField
-                  label="Document"
-                  value={`${user.kycDetails.docType} · ${user.kycDetails.docNumber}`}
-                />
-                <DetailField label="Document file" value={user.kycDetails.docFileName} />
-                <DetailField
-                  label="Address"
-                  value={`${user.kycDetails.address}, ${user.kycDetails.city}, ${user.kycDetails.state} ${user.kycDetails.pincode}`}
-                  className="sm:col-span-2"
-                />
-                <DetailField
-                  label="Submitted at"
-                  value={new Date(user.kycDetails.submittedAt).toLocaleString('en-IN')}
-                />
-              </dl>
+              <AdminKycDetailsPanel details={user.kycDetails} />
             </section>
           )}
 
@@ -413,7 +411,7 @@ export function MemberDetailTab({
                 {user.kycHistory.map((entry) => (
                   <div
                     key={entry.id}
-                    className="p-4 rounded-xl border border-stone-100 bg-stone-50/80 text-sm"
+                    className="p-4 rounded-xl border border-stone-100 bg-stone-50/80 text-sm space-y-4"
                   >
                     <div className="flex flex-wrap gap-2 items-center justify-between">
                       <AdminBadge
@@ -429,14 +427,12 @@ export function MemberDetailTab({
                       </AdminBadge>
                       <span className="text-xs font-mono text-stone-500">{entry.certificateId}</span>
                     </div>
-                    <p className="text-xs text-stone-500 mt-2">
-                      Submitted {new Date(entry.submittedAt).toLocaleString('en-IN')}
-                      {entry.reviewedAt &&
-                        ` · Reviewed ${new Date(entry.reviewedAt).toLocaleString('en-IN')}`}
-                    </p>
-                    {entry.rejectionReason && (
-                      <p className="text-xs text-red-700 mt-2">{entry.rejectionReason}</p>
-                    )}
+                    <AdminKycDetailsPanel
+                      details={entry.details}
+                      reviewedBy={entry.reviewedBy}
+                      reviewedAt={entry.reviewedAt}
+                      rejectionReason={entry.rejectionReason}
+                    />
                   </div>
                 ))}
               </div>
@@ -671,87 +667,7 @@ export function MemberDetailTab({
         </div>
       )}
 
-      {activeTab === 'referrals' && (
-        <section className={`${adminCard} p-5 space-y-4`}>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className={adminTypography.sectionTitle}>Referrals</h3>
-              <p className="text-sm text-stone-500 mt-0.5">
-                Direct invites via this member&apos;s referral link
-              </p>
-            </div>
-            {referrals.length > 0 && (
-              <div className="flex flex-wrap gap-3 text-xs">
-                <span className="px-2.5 py-1 rounded-lg bg-stone-100 text-stone-700 font-semibold">
-                  Total: {referrals.length}
-                </span>
-                <span className="px-2.5 py-1 rounded-lg bg-green-50 text-green-800 font-semibold">
-                  Active: {activeReferrals}
-                </span>
-                <span className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 font-semibold">
-                  Pending: {pendingReferrals}
-                </span>
-                <span className="px-2.5 py-1 rounded-lg bg-[#f8f1e8] text-[#7f4e1c] font-semibold">
-                  Bonuses: {formatINR(totalReferralBonus)}
-                </span>
-              </div>
-            )}
-          </div>
-          {referrals.length === 0 ? (
-            <p className="text-sm text-stone-500">No referral connections yet.</p>
-          ) : (
-            <>
-              <TableDateSortControls
-                dateFilter={referralsList.dateFilter}
-                onDateFilterChange={referralsList.setDateFilter}
-                sortOrder={referralsList.sortOrder}
-                onSortOrderChange={referralsList.setSortOrder}
-                variant="admin"
-                showDateRange={referralsList.showDateRange}
-                showSort={referralsList.showSort}
-              />
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[520px]">
-                  <thead>
-                    <tr className="text-xs uppercase text-stone-400 border-b border-stone-100">
-                      <th className="text-left py-2 pr-4">Referred member</th>
-                      <th className="text-left py-2 pr-4">Referral ID</th>
-                      <th className="text-left py-2 pr-4">Status</th>
-                      <th className="text-right py-2">Bonus earned</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {referralsList.paginated.map((ref) => (
-                      <tr key={ref.id} className="border-b border-stone-50 last:border-0">
-                        <td className="py-2.5 font-medium text-stone-800">{ref.friendName}</td>
-                        <td className="py-2.5 font-mono text-xs text-stone-500">
-                          #REF-{ref.id.padStart(4, '0')}
-                        </td>
-                        <td className="py-2.5">
-                          <AdminBadge tone={ref.status === 'active' ? 'success' : 'warning'}>
-                            {ref.status}
-                          </AdminBadge>
-                        </td>
-                        <td className="py-2.5 text-right font-mono text-[#7f4e1c]">
-                          {ref.status === 'active' ? formatINR(ref.bonusEarned) : formatINR(0)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <TablePagination
-                currentPage={referralsList.page}
-                totalPages={referralsList.totalPages}
-                onPageChange={referralsList.setPage}
-                totalItems={referralsList.total}
-                itemsPerPage={referralsList.pageSize}
-                label="referrals"
-              />
-            </>
-          )}
-        </section>
-      )}
+      {activeTab === 'referrals' && <AdminMemberNetworkPanel user={user} />}
 
       {activeTab === 'admin' && (
         <section className={`${adminCard} p-5 space-y-4 max-w-xl`}>

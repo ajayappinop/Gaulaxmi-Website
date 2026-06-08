@@ -35,6 +35,11 @@ import { TablePagination } from './TablePagination';
 import { TableListToolbar } from './TableListToolbar';
 import { useTableList } from '../hooks/useTableList';
 import type { Transaction, Investment, Referral } from '../lib/auth';
+import { isKycImageDataUrl, readKycDocumentAsDataUrl } from '../lib/kycDocumentUpload';
+import { defaultLast30DaysFilter, type TableDateFilter } from '../lib/tableControls';
+import { computeMemberOverviewKpis } from '../lib/memberOverviewKpis';
+import { MemberOverviewDateFilter } from './MemberOverviewDateFilter';
+import { MemberOverviewKpiGrid } from './MemberOverviewKpiGrid';
 
 type TabView = DashboardTabId;
 
@@ -146,6 +151,14 @@ export function Dashboard({
 
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [selectedInvestment, setSelectedInvestment] = useState<Investment | null>(null);
+  const [overviewDateFilter, setOverviewDateFilter] = useState<TableDateFilter>(() =>
+    defaultLast30DaysFilter()
+  );
+
+  const overviewKpis = useMemo(
+    () => (user ? computeMemberOverviewKpis(user, overviewDateFilter) : null),
+    [user, overviewDateFilter]
+  );
 
   const walletTransactions = useMemo(() => {
     if (!user?.transactions) return [];
@@ -173,6 +186,22 @@ export function Dashboard({
   if (!user) return null;
 
   const kycVerified = user.kycStatus === 'verified' || user.isKycVerified;
+
+  const handleKycDocumentUpload = (file: File | undefined) => {
+    if (!file) return;
+    void readKycDocumentAsDataUrl(file)
+      .then((dataUrl) => {
+        setKycForm((prev) => ({
+          ...prev,
+          docFileName: file.name,
+          docFileUrl: dataUrl,
+        }));
+        toast.success(`${file.name} uploaded successfully`);
+      })
+      .catch((err) =>
+        toast.error(err instanceof Error ? err.message : 'Could not upload document')
+      );
+  };
 
   const handleInvestInPlan = (plan: InvestmentPlan) => {
     if (!onStartPlanPurchase) {
@@ -367,46 +396,63 @@ export function Dashboard({
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 sm:space-y-6">
                  <header className="space-y-1">
                    <h2 className="font-display font-bold text-xl sm:text-2xl text-stone-900">Account Overview</h2>
-                   <p className="text-sm text-stone-500">Wallet balance, returns, and quick actions</p>
+                   <p className="text-sm text-stone-500">Wallet balance, income KPIs, and quick actions</p>
                  </header>
-                 
-                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                   {/* Balance Card */}
-                   <div className="bg-gradient-to-br from-[#7b3f08] to-[#b86a1f] text-white rounded-3xl p-6 shadow-md">
-                      <div className="text-white/80 text-sm font-semibold uppercase tracking-wider mb-2">Available Wallet Balance</div>
-                      <div className="text-4xl font-display font-bold">₹{user.balance.toLocaleString('en-IN')}</div>
-                      <div className="mt-6 flex justify-between gap-3">
-                         <button onClick={() => setActiveTab('wallet')} className="flex-1 bg-white/20 hover:bg-white/30 transition shadow-sm rounded-xl py-2 flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer">
-                           <ArrowDownRight className="w-4 h-4" /> Deposit
-                         </button>
-                         <button onClick={() => setActiveTab('wallet')} className="flex-1 bg-black/20 hover:bg-black/30 transition shadow-sm rounded-xl py-2 flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer">
-                           <ArrowUpRight className="w-4 h-4" /> Withdraw
-                         </button>
-                      </div>
-                   </div>
 
-                   {/* Active Investments */}
-                   <div className="bg-white border border-border rounded-3xl p-6 shadow-sm flex flex-col justify-between">
+                 <MemberOverviewDateFilter
+                   value={overviewDateFilter}
+                   onChange={setOverviewDateFilter}
+                 />
+
+                 <div
+                   role="button"
+                   tabIndex={0}
+                   onClick={() => setActiveTab('wallet')}
+                   onKeyDown={(e) => {
+                     if (e.key === 'Enter' || e.key === ' ') {
+                       e.preventDefault();
+                       setActiveTab('wallet');
+                     }
+                   }}
+                   className="w-full text-left bg-gradient-to-br from-[#7b3f08] to-[#b86a1f] text-white rounded-3xl p-6 shadow-md hover:shadow-lg hover:brightness-[1.02] transition-all duration-200 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50 group"
+                   aria-label={`Available wallet balance: ${formatINR(user.balance)}. Open wallet`}
+                 >
+                    <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-muted-foreground text-sm font-semibold uppercase tracking-wider mb-2">Total Invested</div>
-                        <div className="text-3xl font-display font-bold text-bark">₹{(user.investments?.reduce((sum, inv) => sum + inv.amount, 0) || 0).toLocaleString('en-IN')}</div>
+                        <div className="text-white/80 text-sm font-semibold uppercase tracking-wider mb-2">Available Wallet Balance</div>
+                        <div className="text-4xl font-display font-bold">₹{user.balance.toLocaleString('en-IN')}</div>
                       </div>
-                      <button onClick={() => setActiveTab('investments')} className="mt-4 text-[#7b3f08] hover:text-[#502905] text-sm font-semibold flex items-center gap-1 underline underline-offset-4 cursor-pointer">
-                         View active plans
-                      </button>
-                   </div>
-                   
-                   {/* Total Returns */}
-                   <div className="bg-white border border-border rounded-3xl p-6 shadow-sm flex flex-col justify-between">
-                      <div>
-                        <div className="text-muted-foreground text-sm font-semibold uppercase tracking-wider mb-2">Total Earnings</div>
-                        <div className="text-3xl font-display font-bold text-[#10b981]">₹{((user.investments?.reduce((sum, inv) => sum + inv.amount, 0) || 0) * 0.05).toLocaleString('en-IN')}</div>
-                      </div>
-                      <div className="mt-4 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                         <Clock className="w-4 h-4" /> Next payout in 30 days
-                      </div>
-                   </div>
+                      <span className="text-xs font-semibold text-white/80 flex items-center gap-1 mt-1 group-hover:text-white transition-colors">
+                        Open wallet <ChevronRight className="w-4 h-4" aria-hidden />
+                      </span>
+                    </div>
+                    <div className="mt-6 flex flex-col sm:flex-row justify-between gap-3">
+                       <button
+                         type="button"
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           setActiveTab('wallet');
+                         }}
+                         className="flex-1 bg-white/20 hover:bg-white/30 transition shadow-sm rounded-xl py-2 flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer"
+                       >
+                         <ArrowDownRight className="w-4 h-4" /> Deposit
+                       </button>
+                       <button
+                         type="button"
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           setActiveTab('wallet');
+                         }}
+                         className="flex-1 bg-black/20 hover:bg-black/30 transition shadow-sm rounded-xl py-2 flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer"
+                       >
+                         <ArrowUpRight className="w-4 h-4" /> Withdraw
+                       </button>
+                    </div>
                  </div>
+
+                 {overviewKpis && (
+                   <MemberOverviewKpiGrid kpis={overviewKpis} onNavigate={setActiveTab} />
+                 )}
 
                  {/* Earnings Projections Chart */}
                  <div className="bg-white border border-border rounded-3xl p-6 shadow-sm mt-6 hidden sm:block">
@@ -1006,7 +1052,15 @@ export function Dashboard({
                                     <label className="text-xs font-bold uppercase text-stone-550 block tracking-wide">Identity Document Type</label>
                                     <select 
                                       value={kycForm.docType} 
-                                      onChange={(e) => setKycForm({...kycForm, docType: e.target.value, docNumber: ''})}
+                                      onChange={(e) =>
+                                        setKycForm({
+                                          ...kycForm,
+                                          docType: e.target.value,
+                                          docNumber: '',
+                                          docFileName: '',
+                                          docFileUrl: '',
+                                        })
+                                      }
                                       className="w-full bg-white border border-stone-250 focus:border-[#7f4e1c] focus:ring-4 focus:ring-[#7f4e1c]/5 rounded-xl px-4 py-2.5 text-sm transition-all focus:outline-none cursor-pointer"
                                     >
                                       <option value="PAN">PAN Card (Permanent Account Number)</option>
@@ -1032,43 +1086,56 @@ export function Dashboard({
                                   </div>
                                 </div>
 
-                                {/* Drag and Drop File Upload Mock Box */}
                                 <div className="space-y-1">
                                   <label className="text-xs font-bold uppercase text-stone-550 block tracking-wide">Upload Identity Copy</label>
-                                  <div 
-                                    onClick={() => {
-                                      const mockFileNames: Record<'PAN' | 'Aadhaar' | 'Passport', string> = {
-                                        'PAN': 'pan_card_national_id.jpg',
-                                        'Aadhaar': 'aadhaar_both_sides_copy.pdf',
-                                        'Passport': 'passport_travel_biodata.png'
-                                      };
-                                      setKycForm({
-                                        ...kycForm, 
-                                        docFileName: mockFileNames[kycForm.docType as 'PAN' | 'Aadhaar' | 'Passport'],
-                                        docFileUrl: 'https://images.unsplash.com/photo-1554774853-aae0a22c8aa4'
-                                      });
-                                      toast.success(`${kycForm.docType} copy uploaded successfully (Simulation Mode)`);
+                                  <label
+                                    className="relative block border-2 border-dashed border-stone-250 hover:border-[#7f4e1c] bg-stone-50/50 hover:bg-[#7f4e1c]/5 rounded-2xl p-6 text-center cursor-pointer transition-all duration-200 group overflow-hidden"
+                                    onDragOver={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
                                     }}
-                                    className="border-2 border-dashed border-stone-250 hover:border-[#7f4e1c] bg-stone-50/50 hover:bg-[#7f4e1c]/5 rounded-2xl p-6 text-center cursor-pointer transition-all duration-200 group relative overflow-hidden"
+                                    onDrop={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleKycDocumentUpload(e.dataTransfer.files?.[0]);
+                                    }}
                                   >
+                                    <input
+                                      type="file"
+                                      accept="image/jpeg,image/png,image/webp,application/pdf"
+                                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                      onChange={(e) => {
+                                        handleKycDocumentUpload(e.target.files?.[0]);
+                                        e.target.value = '';
+                                      }}
+                                    />
                                     {kycForm.docFileName ? (
-                                      <div className="flex flex-col items-center gap-1.5 font-sans py-2">
-                                        <div className="w-12 h-12 bg-amber-50 text-[#7f4e1c] rounded-full flex items-center justify-center border border-amber-200 shadow-inner">
-                                           <FileText className="w-6 h-6" />
-                                        </div>
+                                      <div className="flex flex-col items-center gap-2 font-sans py-2 pointer-events-none">
+                                        {kycForm.docFileUrl && isKycImageDataUrl(kycForm.docFileUrl) ? (
+                                          <img
+                                            src={kycForm.docFileUrl}
+                                            alt="Uploaded identity document"
+                                            className="max-h-32 rounded-lg border border-stone-200 object-contain shadow-sm"
+                                          />
+                                        ) : (
+                                          <div className="w-12 h-12 bg-amber-50 text-[#7f4e1c] rounded-full flex items-center justify-center border border-amber-200 shadow-inner">
+                                            <FileText className="w-6 h-6" />
+                                          </div>
+                                        )}
                                         <span className="text-xs font-bold text-stone-850 mt-1">{kycForm.docFileName}</span>
                                         <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 bg-emerald-50 border border-emerald-100 px-3 py-1 rounded-full mt-1">
-                                          <Check className="w-3.5 h-3.5 font-black" /> Securely Attached
+                                          <Check className="w-3.5 h-3.5 font-black" /> Securely attached
                                         </span>
+                                        <span className="text-[10px] text-stone-500">Click or drop to replace</span>
                                       </div>
                                     ) : (
-                                      <div className="flex flex-col items-center gap-1.5 font-sans py-2">
+                                      <div className="flex flex-col items-center gap-1.5 font-sans py-2 pointer-events-none">
                                         <Upload className="w-10 h-10 text-stone-400 group-hover:text-[#7f4e1c] group-hover:scale-110 transition duration-200 mb-1" />
-                                        <span className="text-xs font-bold text-stone-750 font-sans">Click to scan / drag & drop security photo</span>
-                                        <span className="text-[10px] text-stone-450 font-sans">Supports PDF, PNG, JPG, or PDF copies up to 10MB</span>
+                                        <span className="text-xs font-bold text-stone-750 font-sans">Click or drag & drop your document</span>
+                                        <span className="text-[10px] text-stone-450 font-sans">JPG, PNG, WebP, or PDF up to 1.8 MB</span>
                                       </div>
                                     )}
-                                  </div>
+                                  </label>
                                 </div>
 
                                 {/* Dynamic ID mock graphics widget */}
@@ -1153,7 +1220,7 @@ export function Dashboard({
                                       toast.error(`Invalid ${kycForm.docType} number. ${hint}`);
                                       return;
                                     }
-                                    if (!kycForm.docFileName) {
+                                    if (!kycForm.docFileName || !kycForm.docFileUrl) {
                                       toast.error('Please upload a copy of your identity document.');
                                       return;
                                     }
@@ -1362,7 +1429,8 @@ export function Dashboard({
                                           phone: kycForm.phone,
                                           docType: kycForm.docType,
                                           docNumber: kycForm.docNumber,
-                                          docFileName: kycForm.docFileName || `${kycForm.docType.toLowerCase()}_file.jpg`,
+                                          docFileName: kycForm.docFileName,
+                                          docFileUrl: kycForm.docFileUrl,
                                           address: kycForm.address,
                                           city: kycForm.city,
                                           state: kycForm.state,
@@ -1534,17 +1602,37 @@ export function Dashboard({
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
                          <div className="bg-stone-50 rounded-xl p-4 border border-stone-200 relative overflow-hidden">
                            <span className="text-[10px] uppercase font-bold text-stone-400 block mb-1">Referred By (Sponsor)</span>
-                           <span className="font-bold text-stone-800 text-sm whitespace-nowrap text-ellipsis overflow-hidden">Priya Sharma (GLX-5489)</span>
+                           <span className="font-bold text-stone-800 text-sm whitespace-nowrap text-ellipsis overflow-hidden">
+                             {user.referredByName
+                               ? `${user.referredByName}${user.referredByUserId ? ` (${user.referredByUserId})` : ''}`
+                               : 'Direct signup — no sponsor'}
+                           </span>
                            <Users className="absolute -bottom-2 -right-2 w-16 h-16 text-stone-200/50 -rotate-12 pointer-events-none" />
                          </div>
                          <div className="bg-stone-50 rounded-xl p-4 border border-stone-200 relative overflow-hidden">
-                           <span className="text-[10px] uppercase font-bold text-stone-400 block mb-1">Network Level</span>
-                           <span className="font-bold text-stone-800 text-sm">Level {user?.id === 'ID-GLX-001' ? '0 (Root Node)' : '3'}</span>
+                           <span className="text-[10px] uppercase font-bold text-stone-400 block mb-1">Your referral link</span>
+                           <span className="font-bold text-stone-800 text-xs font-mono truncate block">
+                             {user.referralLink || `https://gaulaxmi.com/ref/${user.id}`}
+                           </span>
                            <Network className="absolute -bottom-2 -right-2 w-16 h-16 text-stone-200/50 -rotate-12 pointer-events-none" />
                          </div>
                          <div className="bg-stone-50 rounded-xl p-4 border border-stone-200 relative overflow-hidden">
                            <span className="text-[10px] uppercase font-bold text-stone-400 block mb-1">Join Date</span>
-                           <span className="font-bold text-stone-800 text-sm">October 14, 2025</span>
+                           <span className="font-bold text-stone-800 text-sm">
+                             {user.kycDetails?.submittedAt
+                               ? new Date(user.kycDetails.submittedAt).toLocaleDateString('en-IN', {
+                                   day: 'numeric',
+                                   month: 'long',
+                                   year: 'numeric',
+                                 })
+                               : user.investments[0]?.date
+                                 ? new Date(user.investments[0].date).toLocaleDateString('en-IN', {
+                                     day: 'numeric',
+                                     month: 'long',
+                                     year: 'numeric',
+                                   })
+                                 : '—'}
+                           </span>
                            <Clock className="absolute -bottom-2 -right-2 w-16 h-16 text-stone-200/50 -rotate-12 pointer-events-none" />
                          </div>
                          <div className="bg-stone-50 rounded-xl p-4 border border-stone-200 relative overflow-hidden">

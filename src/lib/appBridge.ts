@@ -1,4 +1,4 @@
-import { getToken, setToken } from './apiClient';
+import { getToken, setMemberHandoffToken } from './apiClient';
 import { getAdminAppUrl, getMemberAppUrl } from './admin';
 
 const HANDOFF_PARAM = 'handoff';
@@ -11,7 +11,8 @@ export function consumeAuthHandoffFromUrl(): boolean {
   const handoff = params.get(HANDOFF_PARAM);
   if (!handoff?.trim()) return false;
 
-  setToken(handoff.trim());
+  // Impersonation / cross-app login always targets the member site token slot.
+  setMemberHandoffToken(handoff.trim());
   params.delete(HANDOFF_PARAM);
   const qs = params.toString();
   const next = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash}`;

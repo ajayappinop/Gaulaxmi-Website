@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { isAdminUser } from './admin';
 import { isValidPassword, normalizeEmail } from './validation';
 import type { UserRole } from './admin';
-import { api, ApiError, getToken, setToken } from './apiClient';
+import { api, ApiError, getToken, isAdminApp, setToken } from './apiClient';
 import { consumeAuthHandoffFromUrl } from './appBridge';
 
 export type AuthResult = { ok: true; user: User } | { ok: false; message: string };
@@ -30,6 +30,14 @@ export interface Referral {
   friendName: string;
   status: 'active' | 'pending';
   bonusEarned: number;
+  level?: number;
+  joinDate?: string;
+  referredBy?: string;
+  referrerId?: string;
+  email?: string;
+  phone?: string;
+  investmentTotal?: number;
+  downline?: Referral[];
 }
 
 export interface KycDetails {
@@ -40,6 +48,7 @@ export interface KycDetails {
   docType: string;
   docNumber: string;
   docFileName: string;
+  docFileUrl?: string;
   address: string;
   city: string;
   state: string;
@@ -63,6 +72,8 @@ export interface User {
   transactions: Transaction[];
   referrals: Referral[];
   referralLink: string;
+  referredByUserId?: string;
+  referredByName?: string;
   phone?: string;
   isDeactivated?: boolean;
   profileImage?: string;
@@ -78,7 +89,7 @@ interface AuthContextType {
   loading: boolean;
   allUsers: User[];
   login: (email: string, pass: string) => Promise<AuthResult>;
-  register: (name: string, email: string, pass: string) => Promise<AuthResult>;
+  register: (name: string, email: string, pass: string, referrerId?: string) => Promise<AuthResult>;
   logout: () => void;
   submitManualDeposit: (
     amount: number,
@@ -135,11 +146,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (nextUser: User) => {
       setUser(nextUser);
       if (isAdminUser(nextUser)) {
-        localStorage.setItem(ADMIN_SESSION_KEY, '1');
-        await loadAdminUsers();
+        if (isAdminApp()) {
+          localStorage.setItem(ADMIN_SESSION_KEY, '1');
+          await loadAdminUsers();
+        }
       } else {
-        localStorage.removeItem(ADMIN_SESSION_KEY);
         setAllUsers([]);
+        // Never clear admin session from the member app (impersonation opens member in another tab).
       }
     },
     [loadAdminUsers]
@@ -147,7 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     (async () => {
-      consumeAuthHandoffFromUrl();
+      const handoffApplied = consumeAuthHandoffFromUrl();
       if (!getToken()) {
         setLoading(false);
         return;
@@ -156,6 +169,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const me = await api.me();
         await applySession(me);
       } catch {
+        if (handoffApplied) {
+          for (let attempt = 0; attempt < 8; attempt++) {
+            await new Promise((r) => setTimeout(r, 400));
+            try {
+              const me = await api.me();
+              await applySession(me);
+              setLoading(false);
+              return;
+            } catch {
+              /* API may still be starting */
+            }
+          }
+        }
         setToken(null);
         setUser(null);
         setAllUsers([]);
@@ -190,12 +216,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const register = async (name: string, email: string, pass: string): Promise<AuthResult> => {
+  const register = async (
+    name: string,
+    email: string,
+    pass: string,
+    referrerId?: string
+  ): Promise<AuthResult> => {
     if (!isValidPassword(pass)) {
       return { ok: false, message: 'Password must be at least 6 characters.' };
     }
     try {
-      const { token, user: created } = await api.register(name, email, pass);
+      const { token, user: created } = await api.register(name, email, pass, referrerId);
       setToken(token);
       await applySession(created);
       return { ok: true, user: created };
@@ -208,7 +239,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
     setUser(null);
     setAllUsers([]);
-    localStorage.removeItem(ADMIN_SESSION_KEY);
+    if (isAdminApp()) {
+      localStorage.removeItem(ADMIN_SESSION_KEY);
+    }
   };
 
   const refreshUsers = async () => {

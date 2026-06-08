@@ -23,6 +23,7 @@ import { addInquiry } from "./lib/inquiries";
 import { normalizeIndianPhone } from "./lib/validation";
 import { DASHBOARD_NAV_ITEMS, isDashboardTabId, type DashboardTabId } from "./lib/dashboardNav";
 import { buildAdminEntryUrl, consumeOpenDashboardFromUrl } from "./lib/appBridge";
+import { parseReferrerFromUrl, storeReferrerId } from "./lib/referralStorage";
 import { isAdminUser } from "./lib/admin";
 import { PlanPurchaseFlow } from "./components/PlanPurchaseFlow";
 import {
@@ -1590,6 +1591,11 @@ export default function App() {
   const closeDashboard = () => {
     setDashboardTab(null);
   };
+
+  useEffect(() => {
+    const referrerFromUrl = parseReferrerFromUrl();
+    if (referrerFromUrl) storeReferrerId(referrerFromUrl);
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => {

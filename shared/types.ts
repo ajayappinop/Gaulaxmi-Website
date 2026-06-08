@@ -148,6 +148,17 @@ export interface Referral {
   friendName: string;
   status: 'active' | 'pending';
   bonusEarned: number;
+  /** 1 = direct referral, 2+ = indirect (downline) */
+  level?: number;
+  joinDate?: string;
+  /** Name of the member who referred this person */
+  referredBy?: string;
+  referrerId?: string;
+  email?: string;
+  phone?: string;
+  investmentTotal?: number;
+  /** Members this referral personally invited (your indirect network) */
+  downline?: Referral[];
 }
 
 export interface KycDetails {
@@ -158,6 +169,8 @@ export interface KycDetails {
   docType: string;
   docNumber: string;
   docFileName: string;
+  /** Base64 data URL of uploaded identity document (image or PDF). */
+  docFileUrl?: string;
   address: string;
   city: string;
   state: string;
@@ -215,6 +228,10 @@ export interface User {
   transactions: Transaction[];
   referrals: Referral[];
   referralLink: string;
+  /** User id of the member who referred this account */
+  referredByUserId?: string;
+  /** Display name of referrer */
+  referredByName?: string;
   phone?: string;
   isDeactivated?: boolean;
   profileImage?: string;
