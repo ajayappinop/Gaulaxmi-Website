@@ -68,6 +68,7 @@ import { defaultLast30DaysFilter, getDateFilterLabel } from '../lib/tableControl
 import { buildPeriodMetrics, type OverviewDateFilter } from '../lib/adminOverviewCharts';
 import { toast } from 'react-hot-toast';
 import logo from '../assets/Images/gaulaxmi-logo.png';
+import { AuthBootScreen } from '../components/AuthBootScreen';
 import {
   LayoutDashboard,
   Users,
@@ -210,6 +211,10 @@ export function AdminApp() {
     setAdminUnlocked(false);
     auth.logout();
   };
+
+  if (auth.loading) {
+    return <AuthBootScreen variant="admin" />;
+  }
 
   if (!isAdminSession) {
     return <AdminLoginForm onLogin={handleAdminLogin} />;

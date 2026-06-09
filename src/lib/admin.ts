@@ -73,24 +73,31 @@ export const ADMIN_NAV_SECTIONS: AdminNavSection[] = [
 /** Flat list for mobile nav and lookups */
 export const ADMIN_NAV_ITEMS: AdminNavItem[] = ADMIN_NAV_SECTIONS.flatMap((s) => s.items);
 
-export function getMemberAppUrl(): string {
-  if (typeof window !== 'undefined') {
-    if (import.meta.env.DEV && window.location.port === '3001') {
-      return 'http://localhost:3000/';
-    }
-    return `${window.location.origin}/`;
+function normalizeAppRootUrl(raw: string): string {
+  const base = typeof window !== 'undefined' ? window.location.href : 'http://localhost/';
+  const url = new URL(raw.trim(), base);
+  if (!url.pathname.endsWith('/')) {
+    url.pathname += '/';
   }
-  return 'http://localhost:3000/';
+  return url.toString();
 }
 
+/** Member site base URL — set VITE_MEMBER_URL in .env (e.g. http://localhost:3000/). */
+export function getMemberAppUrl(): string {
+  const fromEnv = import.meta.env.VITE_MEMBER_URL?.trim();
+  if (!fromEnv) {
+    throw new Error('VITE_MEMBER_URL is not set. Add it to your .env file.');
+  }
+  return normalizeAppRootUrl(fromEnv);
+}
+
+/** Admin panel base URL — set VITE_ADMIN_URL in .env (e.g. http://localhost:3001/). */
 export function getAdminAppUrl(): string {
-  if (import.meta.env.DEV) {
-    return 'http://localhost:3001/';
+  const fromEnv = import.meta.env.VITE_ADMIN_URL?.trim();
+  if (!fromEnv) {
+    throw new Error('VITE_ADMIN_URL is not set. Add it to your .env file.');
   }
-  if (typeof window !== 'undefined') {
-    return `${window.location.origin}/admin/`;
-  }
-  return '/admin/';
+  return normalizeAppRootUrl(fromEnv);
 }
 
 export function exportAccountsJson(users: User[]): string {

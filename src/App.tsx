@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "./lib/auth";
 import { Dashboard } from "./components/Dashboard";
 import { AuthForm } from "./components/AuthForm";
+import { AuthBootScreen } from "./components/AuthBootScreen";
 import logo from "./assets/Images/gaulaxmi-logo.png";
 import heroCow from "./assets/Images/hero-cow.png";
 import products from "./assets/Images/cow_products_studio_1779970801272.png";
@@ -118,7 +119,7 @@ const navLinks = [
 ];
 
 function Nav({ onDashboardOpen }: { onDashboardOpen: (tab: DashboardTabId) => void }) {
-  const { isLoggedIn, user, logout, isAdmin } = useAuth();
+  const { isLoggedIn, user, logout, isAdmin, loading: authLoading } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
@@ -197,12 +198,12 @@ function Nav({ onDashboardOpen }: { onDashboardOpen: (tab: DashboardTabId) => vo
           </nav>
           <div className="flex items-center gap-2 sm:gap-3 shrink-0 relative z-10">
             <div className="flex items-center gap-2">
-              {isLoggedIn && (
-                <a href="#contact" className="hidden sm:inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium hover:bg-accent transition-all shadow-soft hover:scale-105">
-                  Invest Now <ArrowRight className="w-4 h-4" />
-                </a>
-              )}
-              {isLoggedIn ? (
+              {authLoading ? (
+                <div
+                  className="w-9 h-9 rounded-full bg-primary/10 animate-pulse shrink-0"
+                  aria-hidden="true"
+                />
+              ) : isLoggedIn ? (
                 <div className="relative" ref={profileMenuRef}>
                   <button
                     type="button"
@@ -287,9 +288,11 @@ function Nav({ onDashboardOpen }: { onDashboardOpen: (tab: DashboardTabId) => vo
                   )}
                 </div>
               ) : (
-                <a href="#contact" className="hidden sm:inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium hover:bg-accent transition-all shadow-soft hover:scale-105">
-                  Invest Now <ArrowRight className="w-4 h-4" />
-                </a>
+                <>
+                  <a href="#contact" className="hidden sm:inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium hover:bg-accent transition-all shadow-soft hover:scale-105">
+                    Invest Now <ArrowRight className="w-4 h-4" />
+                  </a>
+                </>
               )}
             </div>
             <button
@@ -325,7 +328,7 @@ function Nav({ onDashboardOpen }: { onDashboardOpen: (tab: DashboardTabId) => vo
                   {l.label}
                 </a>
               ))}
-              {isLoggedIn ? (
+              {authLoading ? null : isLoggedIn ? (
                 <>
                   <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold px-3 pt-2 pb-1">
                     My Account
@@ -382,7 +385,7 @@ interface FlyingParticle {
   x: number;
 }
 
-function Hero({ isLoggedIn }: { isLoggedIn: boolean }) {
+function Hero({ isLoggedIn, authLoading }: { isLoggedIn: boolean; authLoading: boolean }) {
   const { user } = useAuth();
   return (
     <section id="top" className="relative min-h-screen flex items-center overflow-hidden isolate bg-[#1c120c]">
@@ -502,7 +505,11 @@ function Hero({ isLoggedIn }: { isLoggedIn: boolean }) {
           </motion.div>
         </div>
         <div className="w-full mt-16 lg:mt-0 flex justify-center lg:justify-end">
-           {!isLoggedIn ? <AuthForm /> : (
+           {authLoading ? (
+             <AuthBootScreen variant="member" compact />
+           ) : !isLoggedIn ? (
+             <AuthForm />
+           ) : (
              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-8 lg:p-10 shadow-2xl text-center max-w-sm w-full mx-auto lg:mx-0">
                 <div className="w-16 h-16 bg-gradient-gold rounded-full flex items-center justify-center text-bark mx-auto mb-6 shadow-glow overflow-hidden">
                    {user?.profileImage ? (
@@ -1637,7 +1644,7 @@ export default function App() {
          />
       ) : (
         <main className="pt-14 sm:pt-16">
-          <Hero isLoggedIn={isLoggedIn} />
+          <Hero isLoggedIn={isLoggedIn} authLoading={authLoading} />
           <About />
           <WhyChoose />
           <Income />
